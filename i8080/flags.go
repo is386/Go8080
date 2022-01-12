@@ -7,7 +7,3 @@ type Flags struct {
 	CY uint8
 	AC uint8
 }
-
-func NewFlags() *Flags {
-	return &Flags{Z: 1, S: 1, P: 1, CY: 1, AC: 1}
-}
