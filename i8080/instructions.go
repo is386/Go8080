@@ -41,7 +41,7 @@ var (
 		0x24: inrH,
 		0x25: dcrH,
 		0x26: unimplemented,
-		0x27: unimplemented,
+		0x27: daa,
 		0x28: unimplemented,
 		0x29: dadH,
 		0x2a: unimplemented,
