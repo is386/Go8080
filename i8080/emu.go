@@ -1,6 +1,8 @@
 package i8080
 
 import (
+	"fmt"
+	"io/ioutil"
 	"math/bits"
 )
 
@@ -15,6 +17,16 @@ type Emulator struct {
 
 func NewEmulator() *Emulator {
 	return &Emulator{}
+}
+
+func (e *Emulator) LoadRom(filename string, offset uint16) {
+	rom, err := ioutil.ReadFile(filename)
+	if err != nil {
+		panic(err)
+	}
+	for i := 0; i < len(rom); i++ {
+		e.memory[offset+uint16(i)] = rom[i]
+	}
 }
 
 func (e *Emulator) getBC() uint16 {
@@ -104,10 +116,20 @@ func (e *Emulator) decode(opcode uint8) func(*Emulator) uint16 {
 	return INSTRUCTIONS[opcode]
 }
 
-func (e *Emulator) Execute() {
+func (e *Emulator) Execute() bool {
 	opcode := e.fetch()
 	instr := e.decode(opcode)
-	e.pc += instr(e)
+	steps := instr(e)
+	if steps == 0 {
+		fmt.Printf("unimplemented instruction: %x\n", opcode)
+		return false
+	}
+	e.pc += steps
+	return true
+}
+
+func unimplemented(e *Emulator) uint16 {
+	return 0
 }
 
 func noOp(e *Emulator) uint16 {
@@ -474,20 +496,20 @@ func dadSP(e *Emulator) uint16 {
 	return 1
 }
 
-func daa(e *Emulator) uint16 {
-	least := e.registers.A & 0x0f
-	if least > 9 || e.flags.AC == 1 {
-		e.registers.A += 6
-	}
+// func daa(e *Emulator) uint16 {
+// 	least := e.registers.A & 0x0f
+// 	if least > 9 || e.flags.AC == 1 {
+// 		e.registers.A += 6
+// 	}
 
-	most := e.registers.A >> 4
-	least = e.registers.A & 0x0f
-	if most > 9 || e.flags.CY == 1 {
-		most += 6
-		val := (most << 4) | least
-		e.registers.A = val
-	}
+// 	most := e.registers.A >> 4
+// 	least = e.registers.A & 0x0f
+// 	if most > 9 || e.flags.CY == 1 {
+// 		most += 6
+// 		val := (most << 4) | least
+// 		e.registers.A = val
+// 	}
 
-	e.addToAccumulator(0)
-	return 1
-}
+// 	e.addToAccumulator(0)
+// 	return 1
+// }
