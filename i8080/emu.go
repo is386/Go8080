@@ -6,6 +6,11 @@ import (
 	"math/bits"
 )
 
+// xra, ora sets AC to 0
+// ana sets AC to ((c->a | val) & 0x08) != 0
+// cmp sets AC to ~(c->a ^ result ^ val) & 0x10;
+// pop psw sets AC to something weird
+
 type Emulator struct {
 	memory    [64 * 1024]uint8
 	registers *Registers
@@ -80,7 +85,7 @@ func (e *Emulator) setSign(val uint16) {
 	}
 }
 
-func (e *Emulator) setInrDcrFlags(val uint8) {
+func (e *Emulator) setZSP(val uint8) {
 	e.setZero(uint16(val))
 	e.setSign(uint16(val))
 	e.setParity(uint16(val))
@@ -90,21 +95,47 @@ func (e *Emulator) setParity(val uint16) {
 	e.flags.P = parity(uint(val & 0xff))
 }
 
+func (e *Emulator) setAuxCarry(val1 uint16, val2 uint16, total uint16) {
+	if ((total ^ val1 ^ val2) & 0x10) > 0 {
+		e.flags.AC = 1
+	} else {
+		e.flags.AC = 0
+	}
+}
+
+func (e *Emulator) setAuxCarryInr(val uint8) {
+	if (val & 0xf) == 0 {
+		e.flags.AC = 1
+	} else {
+		e.flags.AC = 0
+	}
+}
+
+func (e *Emulator) setAuxCarryDcr(val uint8) {
+	if (val & 0xf) == 0xf {
+		e.flags.AC = 0
+	} else {
+		e.flags.AC = 1
+	}
+}
+
 func (e *Emulator) addToAccumulator(val uint8) {
 	ans := uint16(e.registers.A) + uint16(val)
 	e.setZero(ans)
 	e.setSign(ans)
 	e.setCarry(ans)
 	e.setParity(ans)
+	e.setAuxCarry(uint16(e.registers.A), uint16(val), ans)
 	e.registers.A = uint8(ans & 0xff)
 }
 
-func (e *Emulator) subR(val uint8) {
+func (e *Emulator) subFromAccumulator(val uint8) {
 	ans := uint16(e.registers.A) - uint16(val)
 	e.setZero(ans)
 	e.setSign(ans)
 	e.setCarry(ans)
 	e.setParity(ans)
+	e.setAuxCarry(uint16(e.registers.A), uint16(val), ans)
 	e.registers.A = uint8(ans & 0xff)
 }
 
@@ -243,192 +274,208 @@ func aci(e *Emulator) uint16 {
 }
 
 func subB(e *Emulator) uint16 {
-	e.subR(e.registers.B)
+	e.subFromAccumulator(e.registers.B)
 	return 1
 }
 
 func subC(e *Emulator) uint16 {
-	e.subR(e.registers.C)
+	e.subFromAccumulator(e.registers.C)
 	return 1
 }
 
 func subD(e *Emulator) uint16 {
-	e.subR(e.registers.D)
+	e.subFromAccumulator(e.registers.D)
 	return 1
 }
 
 func subE(e *Emulator) uint16 {
-	e.subR(e.registers.E)
+	e.subFromAccumulator(e.registers.E)
 	return 1
 }
 
 func subH(e *Emulator) uint16 {
-	e.subR(e.registers.H)
+	e.subFromAccumulator(e.registers.H)
 	return 1
 }
 
 func subL(e *Emulator) uint16 {
-	e.subR(e.registers.L)
+	e.subFromAccumulator(e.registers.L)
 	return 1
 }
 
 func subA(e *Emulator) uint16 {
-	e.subR(e.registers.A)
+	e.subFromAccumulator(e.registers.A)
 	return 1
 }
 
 func subM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.subR(e.memory[offset])
+	e.subFromAccumulator(e.memory[offset])
 	return 1
 }
 
 func sui(e *Emulator) uint16 {
-	e.subR(e.memory[e.pc+1])
+	e.subFromAccumulator(e.memory[e.pc+1])
 	return 2
 }
 
 func sbbB(e *Emulator) uint16 {
-	e.subR(e.registers.B - e.flags.CY)
+	e.subFromAccumulator(e.registers.B - e.flags.CY)
 	return 1
 }
 
 func sbbC(e *Emulator) uint16 {
-	e.subR(e.registers.C - e.flags.CY)
+	e.subFromAccumulator(e.registers.C - e.flags.CY)
 	return 1
 }
 
 func sbbD(e *Emulator) uint16 {
-	e.subR(e.registers.D - e.flags.CY)
+	e.subFromAccumulator(e.registers.D - e.flags.CY)
 	return 1
 }
 
 func sbbE(e *Emulator) uint16 {
-	e.subR(e.registers.E - e.flags.CY)
+	e.subFromAccumulator(e.registers.E - e.flags.CY)
 	return 1
 }
 
 func sbbH(e *Emulator) uint16 {
-	e.subR(e.registers.H - e.flags.CY)
+	e.subFromAccumulator(e.registers.H - e.flags.CY)
 	return 1
 }
 
 func sbbL(e *Emulator) uint16 {
-	e.subR(e.registers.L - e.flags.CY)
+	e.subFromAccumulator(e.registers.L - e.flags.CY)
 	return 1
 }
 
 func sbbA(e *Emulator) uint16 {
-	e.subR(e.registers.A - e.flags.CY)
+	e.subFromAccumulator(e.registers.A - e.flags.CY)
 	return 1
 }
 
 func sbbM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.subR(e.memory[offset] - e.flags.CY)
+	e.subFromAccumulator(e.memory[offset] - e.flags.CY)
 	return 1
 }
 
 func sbi(e *Emulator) uint16 {
-	e.subR(e.memory[e.pc+1] - e.flags.CY)
+	e.subFromAccumulator(e.memory[e.pc+1] - e.flags.CY)
 	return 2
 }
 
 func inrB(e *Emulator) uint16 {
 	e.registers.B += 1
-	e.setInrDcrFlags(e.registers.B)
+	e.setZSP(e.registers.B)
+	e.setAuxCarryInr(e.registers.B)
 	return 1
 }
 
 func inrC(e *Emulator) uint16 {
 	e.registers.C += 1
-	e.setInrDcrFlags(e.registers.C)
+	e.setZSP(e.registers.C)
+	e.setAuxCarryInr(e.registers.C)
 	return 1
 }
 
 func inrD(e *Emulator) uint16 {
 	e.registers.D += 1
-	e.setInrDcrFlags(e.registers.D)
+	e.setZSP(e.registers.D)
+	e.setAuxCarryInr(e.registers.D)
 	return 1
 }
 
 func inrE(e *Emulator) uint16 {
 	e.registers.E += 1
-	e.setInrDcrFlags(e.registers.E)
+	e.setZSP(e.registers.E)
+	e.setAuxCarryInr(e.registers.E)
 	return 1
 }
 
 func inrH(e *Emulator) uint16 {
 	e.registers.H += 1
-	e.setInrDcrFlags(e.registers.H)
+	e.setZSP(e.registers.H)
+	e.setAuxCarryInr(e.registers.H)
 	return 1
 }
 
 func inrL(e *Emulator) uint16 {
 	e.registers.L += 1
-	e.setInrDcrFlags(e.registers.L)
+	e.setZSP(e.registers.L)
+	e.setAuxCarryInr(e.registers.L)
 	return 1
 }
 
 func inrA(e *Emulator) uint16 {
 	e.registers.A += 1
-	e.setInrDcrFlags(e.registers.A)
+	e.setZSP(e.registers.A)
+	e.setAuxCarryInr(e.registers.A)
 	return 1
 }
 
 func inrM(e *Emulator) uint16 {
 	offset := e.getHL()
 	e.memory[offset] += 1
-	e.setInrDcrFlags(e.memory[offset])
+	e.setZSP(e.memory[offset])
+	e.setAuxCarryInr(e.memory[offset])
 	return 1
 }
 
 func dcrB(e *Emulator) uint16 {
 	e.registers.B -= 1
-	e.setInrDcrFlags(e.registers.B)
+	e.setZSP(e.registers.B)
+	e.setAuxCarryDcr(e.registers.B)
 	return 1
 }
 
 func dcrC(e *Emulator) uint16 {
 	e.registers.C -= 1
-	e.setInrDcrFlags(e.registers.C)
+	e.setZSP(e.registers.C)
+	e.setAuxCarryDcr(e.registers.C)
 	return 1
 }
 
 func dcrD(e *Emulator) uint16 {
 	e.registers.D -= 1
-	e.setInrDcrFlags(e.registers.D)
+	e.setZSP(e.registers.D)
+	e.setAuxCarryDcr(e.registers.D)
 	return 1
 }
 
 func dcrE(e *Emulator) uint16 {
 	e.registers.E -= 1
-	e.setInrDcrFlags(e.registers.E)
+	e.setZSP(e.registers.E)
+	e.setAuxCarryDcr(e.registers.E)
 	return 1
 }
 
 func dcrH(e *Emulator) uint16 {
 	e.registers.H -= 1
-	e.setInrDcrFlags(e.registers.H)
+	e.setZSP(e.registers.H)
+	e.setAuxCarryDcr(e.registers.H)
 	return 1
 }
 
 func dcrL(e *Emulator) uint16 {
 	e.registers.L -= 1
-	e.setInrDcrFlags(e.registers.L)
+	e.setZSP(e.registers.L)
+	e.setAuxCarryDcr(e.registers.L)
 	return 1
 }
 
 func dcrA(e *Emulator) uint16 {
 	e.registers.A -= 1
-	e.setInrDcrFlags(e.registers.A)
+	e.setZSP(e.registers.A)
+	e.setAuxCarryDcr(e.registers.A)
 	return 1
 }
 
 func dcrM(e *Emulator) uint16 {
 	offset := e.getHL()
 	e.memory[offset] -= 1
-	e.setInrDcrFlags(e.memory[offset])
+	e.setZSP(e.memory[offset])
+	e.setAuxCarryInr(e.memory[offset])
 	return 1
 }
 
@@ -496,20 +543,22 @@ func dadSP(e *Emulator) uint16 {
 	return 1
 }
 
-// func daa(e *Emulator) uint16 {
-// 	least := e.registers.A & 0x0f
-// 	if least > 9 || e.flags.AC == 1 {
-// 		e.registers.A += 6
-// 	}
+func daa(e *Emulator) uint16 {
+	cy := e.flags.CY
+	lsb := e.registers.A & 0x0f
+	msb := e.registers.A >> 4
+	correction := 0
 
-// 	most := e.registers.A >> 4
-// 	least = e.registers.A & 0x0f
-// 	if most > 9 || e.flags.CY == 1 {
-// 		most += 6
-// 		val := (most << 4) | least
-// 		e.registers.A = val
-// 	}
+	if lsb > 9 || e.flags.AC == 1 {
+		correction += 0x06
+	}
 
-// 	e.addToAccumulator(0)
-// 	return 1
-// }
+	if (e.flags.CY == 1 || msb > 9) || (msb >= 9 && lsb > 9) {
+		correction += 0x60
+		cy = 1
+	}
+
+	e.addToAccumulator(uint8(correction))
+	e.flags.CY = cy
+	return 1
+}
