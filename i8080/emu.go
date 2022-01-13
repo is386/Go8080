@@ -83,19 +83,19 @@ func (e *Emulator) setCarry(val uint16) {
 	}
 }
 
-func parity(num uint8) uint8 {
-	ones := uint8(0)
+func parity(num uint16) uint8 {
+	ones := uint16(0)
 	for i := 0; i < 8; i++ {
 		ones += ((num >> i) & 1)
 	}
-	if (ones & 1) == 0 {
-		return 0
+	if (ones % 2) == 0 {
+		return 1
 	}
-	return 1
+	return 0
 }
 
 func (e *Emulator) setParity(val uint16) {
-	e.flags.P = parity(uint8(val))
+	e.flags.P = parity(val)
 }
 
 func (e *Emulator) setZSP(val uint8) {
@@ -718,7 +718,6 @@ func ldaxD(e *Emulator) uint16 {
 }
 
 func movBB(e *Emulator) uint16 {
-	e.registers.B = e.registers.B
 	return 1
 }
 
@@ -764,7 +763,6 @@ func movCB(e *Emulator) uint16 {
 }
 
 func movCC(e *Emulator) uint16 {
-	e.registers.C = e.registers.C
 	return 1
 }
 
@@ -810,7 +808,6 @@ func movDC(e *Emulator) uint16 {
 }
 
 func movDD(e *Emulator) uint16 {
-	e.registers.D = e.registers.D
 	return 1
 }
 
@@ -856,7 +853,6 @@ func movED(e *Emulator) uint16 {
 }
 
 func movEE(e *Emulator) uint16 {
-	e.registers.E = e.registers.E
 	return 1
 }
 
@@ -902,7 +898,6 @@ func movHE(e *Emulator) uint16 {
 }
 
 func movHH(e *Emulator) uint16 {
-	e.registers.H = e.registers.H
 	return 1
 }
 
@@ -948,7 +943,6 @@ func movLH(e *Emulator) uint16 {
 }
 
 func movLL(e *Emulator) uint16 {
-	e.registers.L = e.registers.L
 	return 1
 }
 
@@ -1000,7 +994,6 @@ func movAM(e *Emulator) uint16 {
 }
 
 func movAA(e *Emulator) uint16 {
-	e.registers.A = e.registers.A
 	return 1
 }
 
