@@ -5,9 +5,7 @@ import (
 	"io/ioutil"
 )
 
-// xra, ora sets AC to 0
-// cmp sets AC to ~(c->a ^ result ^ val) & 0x10;
-// pop psw sets AC to something weird
+// ora sets AC to 0
 
 type Emulator struct {
 	memory    [64 * 1024]uint8
@@ -1079,6 +1077,11 @@ func anaM(e *Emulator) uint16 {
 	return 1
 }
 
+func ani(e *Emulator) uint16 {
+	e.andAccumulator(e.memory[e.pc+1])
+	return 2
+}
+
 func xraB(e *Emulator) uint16 {
 	e.xorAccumulator(e.registers.B)
 	return 1
@@ -1140,5 +1143,111 @@ func ei(e *Emulator) uint16 {
 
 func di(e *Emulator) uint16 {
 	e.intEnable = 0
+	return 1
+}
+
+func pushB(e *Emulator) uint16 {
+	e.memory[e.sp-1] = e.registers.B
+	e.memory[e.sp-2] = e.registers.C
+	e.sp -= 2
+	return 1
+}
+
+func pushD(e *Emulator) uint16 {
+	e.memory[e.sp-1] = e.registers.D
+	e.memory[e.sp-2] = e.registers.E
+	e.sp -= 2
+	return 1
+}
+
+func pushH(e *Emulator) uint16 {
+	e.memory[e.sp-1] = e.registers.H
+	e.memory[e.sp-2] = e.registers.L
+	e.sp -= 2
+	return 1
+}
+
+func pushPSW(e *Emulator) uint16 {
+	e.memory[e.sp-1] = e.registers.A
+	psw := (e.flags.Z | (e.flags.S << 1) | (e.flags.P << 2) | (e.flags.CY << 3) | (e.flags.AC << 4))
+	e.memory[e.sp-2] = psw
+	e.sp -= 2
+	return 1
+}
+
+func popB(e *Emulator) uint16 {
+	e.registers.C = e.memory[e.sp]
+	e.registers.B = e.memory[e.sp+1]
+	e.sp += 2
+	return 1
+}
+
+func popD(e *Emulator) uint16 {
+	e.registers.E = e.memory[e.sp]
+	e.registers.D = e.memory[e.sp+1]
+	e.sp += 2
+	return 1
+}
+
+func popH(e *Emulator) uint16 {
+	e.registers.L = e.memory[e.sp]
+	e.registers.H = e.memory[e.sp+1]
+	e.sp += 2
+	return 1
+}
+
+func popPSW(e *Emulator) uint16 {
+	e.registers.A = e.memory[e.sp+1]
+	psw := e.memory[e.sp]
+	if (psw & 0x01) == 0x01 {
+		e.flags.Z = 1
+	} else {
+		e.flags.Z = 0
+	}
+	if (psw & 0x02) == 0x02 {
+		e.flags.S = 1
+	} else {
+		e.flags.S = 0
+	}
+	if (psw & 0x04) == 0x04 {
+		e.flags.P = 1
+	} else {
+		e.flags.P = 0
+	}
+	if (psw & 0x08) == 0x05 {
+		e.flags.CY = 1
+	} else {
+		e.flags.CY = 0
+	}
+	if (psw & 0x10) == 0x10 {
+		e.flags.AC = 1
+	} else {
+		e.flags.AC = 0
+	}
+	e.memory[e.sp-2] = psw
+	e.sp += 2
+	return 1
+}
+
+func xchg(e *Emulator) uint16 {
+	H := e.registers.H
+	D := e.registers.D
+	L := e.registers.L
+	E := e.registers.E
+	e.registers.D = H
+	e.registers.H = D
+	e.registers.L = E
+	e.registers.E = L
+	return 1
+}
+
+func rrc(e *Emulator) uint16 {
+	a := e.registers.A
+	e.registers.A = ((a & 1) << 7) | (a >> 1)
+	if (a & 1) == 1 {
+		e.flags.CY = 1
+	} else {
+		e.flags.CY = 0
+	}
 	return 1
 }
