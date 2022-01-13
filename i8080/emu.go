@@ -3,11 +3,9 @@ package i8080
 import (
 	"fmt"
 	"io/ioutil"
-	"math/bits"
 )
 
 // xra, ora sets AC to 0
-// ana sets AC to ((c->a | val) & 0x08) != 0
 // cmp sets AC to ~(c->a ^ result ^ val) & 0x10;
 // pop psw sets AC to something weird
 
@@ -21,7 +19,7 @@ type Emulator struct {
 }
 
 func NewEmulator() *Emulator {
-	return &Emulator{}
+	return &Emulator{registers: &Registers{}, flags: &Flags{}}
 }
 
 func (e *Emulator) LoadRom(filename string, offset uint16) {
@@ -62,7 +60,15 @@ func (e *Emulator) setHL(val uint16) {
 }
 
 func (e *Emulator) setZero(val uint16) {
-	if (val & 0x80) == 1 {
+	if (val & 0xff) == 0 {
+		e.flags.Z = 1
+	} else {
+		e.flags.Z = 0
+	}
+}
+
+func (e *Emulator) setSign(val uint16) {
+	if (val & 0x80) != 0 {
 		e.flags.S = 1
 	} else {
 		e.flags.S = 0
@@ -77,22 +83,25 @@ func (e *Emulator) setCarry(val uint16) {
 	}
 }
 
-func (e *Emulator) setSign(val uint16) {
-	if (val & 0xff) == 0 {
-		e.flags.Z = 1
-	} else {
-		e.flags.Z = 0
+func parity(num uint8) uint8 {
+	ones := uint8(0)
+	for i := 0; i < 8; i++ {
+		ones += ((num >> i) & 1)
 	}
+	if (ones & 1) == 0 {
+		return 0
+	}
+	return 1
+}
+
+func (e *Emulator) setParity(val uint16) {
+	e.flags.P = parity(uint8(val))
 }
 
 func (e *Emulator) setZSP(val uint8) {
 	e.setZero(uint16(val))
 	e.setSign(uint16(val))
 	e.setParity(uint16(val))
-}
-
-func (e *Emulator) setParity(val uint16) {
-	e.flags.P = parity(uint(val & 0xff))
 }
 
 func (e *Emulator) setAuxCarry(val1 uint16, val2 uint16, total uint16) {
@@ -124,7 +133,7 @@ func (e *Emulator) addToAccumulator(val uint8) {
 	e.setZero(ans)
 	e.setSign(ans)
 	e.setCarry(ans)
-	e.setParity(ans)
+	e.setParity(ans & 0xff)
 	e.setAuxCarry(uint16(e.registers.A), uint16(val), ans)
 	e.registers.A = uint8(ans & 0xff)
 }
@@ -134,9 +143,51 @@ func (e *Emulator) subFromAccumulator(val uint8) {
 	e.setZero(ans)
 	e.setSign(ans)
 	e.setCarry(ans)
-	e.setParity(ans)
+	e.setParity(ans & 0xff)
 	e.setAuxCarry(uint16(e.registers.A), uint16(val), ans)
 	e.registers.A = uint8(ans & 0xff)
+}
+
+func (e *Emulator) andAccumulator(val uint8) {
+	ans := uint16(e.registers.A & val)
+	e.setZero(ans)
+	e.setSign(ans)
+	e.setCarry(ans)
+	e.setParity(ans & 0xff)
+	if ((e.registers.A | val) & 0x08) != 0 {
+		e.flags.AC = 1
+	} else {
+		e.flags.AC = 0
+	}
+	e.registers.A = uint8(ans & 0xff)
+}
+
+func (e *Emulator) xorAccumulator(val uint8) {
+	ans := uint16(e.registers.A ^ val)
+	e.setZero(ans)
+	e.setSign(ans)
+	e.setCarry(ans)
+	e.setParity(ans & 0xff)
+	e.flags.AC = 0
+	e.registers.A = uint8(ans & 0xff)
+}
+
+func (e *Emulator) compareAccumulator(val uint8) {
+	ans := uint16(e.registers.A - val)
+	e.setZero(ans)
+	e.setSign(ans)
+	if e.registers.A < val {
+		e.flags.CY = 1
+	} else {
+		e.flags.CY = 0
+	}
+	e.setParity(ans)
+	e.setAuxCarry(uint16(e.registers.A), uint16(val), ans)
+	if e.flags.AC == 1 {
+		e.flags.AC = 0
+	} else {
+		e.flags.AC = 1
+	}
 }
 
 func (e *Emulator) fetch() uint8 {
@@ -151,7 +202,19 @@ func (e *Emulator) Execute() bool {
 	opcode := e.fetch()
 	instr := e.decode(opcode)
 	steps := instr(e)
-	if steps == 0 {
+	if steps == 5 {
+		fmt.Printf("\ninstr: %x\n", opcode)
+		fmt.Printf("A: %x\n", e.registers.A)
+		fmt.Printf("BC: %x\n", e.getBC())
+		fmt.Printf("DE: %x\n", e.getDE())
+		fmt.Printf("HL: %x\n", e.getHL())
+		fmt.Printf("PC: %x\n", e.pc)
+		fmt.Printf("SP: %x\n", e.sp)
+		fmt.Printf("Z: %x\n", e.flags.Z)
+		fmt.Printf("S: %x\n", e.flags.S)
+		fmt.Printf("P: %x\n", e.flags.P)
+		fmt.Printf("CY: %x\n", e.flags.CY)
+		fmt.Printf("AC: %x\n", e.flags.AC)
 		fmt.Printf("unimplemented instruction: %x\n", opcode)
 		return false
 	}
@@ -160,25 +223,11 @@ func (e *Emulator) Execute() bool {
 }
 
 func unimplemented(e *Emulator) uint16 {
-	return 0
+	return 5
 }
 
 func noOp(e *Emulator) uint16 {
 	return 1
-}
-
-func lxiB(e *Emulator) uint16 {
-	e.registers.C = e.memory[e.pc+1]
-	e.registers.B = e.memory[e.pc+2]
-	return 3
-}
-
-func parity(num uint) uint8 {
-	ones := bits.OnesCount(num)
-	if ones%2 == 0 {
-		return 1
-	}
-	return 0
 }
 
 func addB(e *Emulator) uint16 {
@@ -560,5 +609,543 @@ func daa(e *Emulator) uint16 {
 
 	e.addToAccumulator(uint8(correction))
 	e.flags.CY = cy
+	return 1
+}
+
+func jmp(e *Emulator) uint16 {
+	e.pc = (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
+	return 0
+}
+
+func jnz(e *Emulator) uint16 {
+	if e.flags.Z == 0 {
+		return jmp(e)
+	}
+	return 3
+}
+
+func ret(e *Emulator) uint16 {
+	e.pc = (uint16(e.memory[e.sp]) | (uint16(e.memory[e.sp+1]) << 8))
+	e.sp += 2
+	return 1
+}
+
+func mviB(e *Emulator) uint16 {
+	e.registers.B = e.memory[e.pc+1]
+	return 2
+}
+
+func mviC(e *Emulator) uint16 {
+	e.registers.C = e.memory[e.pc+1]
+	return 2
+}
+
+func mviD(e *Emulator) uint16 {
+	e.registers.D = e.memory[e.pc+1]
+	return 2
+}
+
+func mviE(e *Emulator) uint16 {
+	e.registers.E = e.memory[e.pc+1]
+	return 2
+}
+
+func mviH(e *Emulator) uint16 {
+	e.registers.H = e.memory[e.pc+1]
+	return 2
+}
+
+func mviL(e *Emulator) uint16 {
+	e.registers.L = e.memory[e.pc+1]
+	return 2
+}
+
+func mviA(e *Emulator) uint16 {
+	e.registers.A = e.memory[e.pc+1]
+	return 2
+}
+
+func mviM(e *Emulator) uint16 {
+	e.memory[e.getHL()] = e.memory[e.pc+1]
+	return 2
+}
+
+func call(e *Emulator) uint16 {
+	ret := e.pc + 2
+	e.memory[e.sp-1] = uint8((ret >> 8) & 0xff)
+	e.memory[e.sp-2] = uint8(ret & 0xff)
+	e.sp = e.sp - 2
+	e.pc = (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
+	return 0
+}
+
+func lxiB(e *Emulator) uint16 {
+	e.registers.C = e.memory[e.pc+1]
+	e.registers.B = e.memory[e.pc+2]
+	return 3
+}
+
+func lxiD(e *Emulator) uint16 {
+	e.registers.E = e.memory[e.pc+1]
+	e.registers.D = e.memory[e.pc+2]
+	return 3
+}
+
+func lxiH(e *Emulator) uint16 {
+	e.registers.L = e.memory[e.pc+1]
+	e.registers.H = e.memory[e.pc+2]
+	return 3
+}
+
+func lxiSP(e *Emulator) uint16 {
+	e.sp = (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
+	return 3
+}
+
+func lda(e *Emulator) uint16 {
+	e.registers.A = uint8((uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1]))
+	return 3
+}
+
+func ldaxB(e *Emulator) uint16 {
+	e.registers.A = e.memory[e.getBC()]
+	return 1
+}
+
+func ldaxD(e *Emulator) uint16 {
+	e.registers.A = e.memory[e.getDE()]
+	return 1
+}
+
+func movBB(e *Emulator) uint16 {
+	e.registers.B = e.registers.B
+	return 1
+}
+
+func movBC(e *Emulator) uint16 {
+	e.registers.B = e.registers.C
+	return 1
+}
+
+func movBD(e *Emulator) uint16 {
+	e.registers.B = e.registers.D
+	return 1
+}
+
+func movBE(e *Emulator) uint16 {
+	e.registers.B = e.registers.E
+	return 1
+}
+
+func movBH(e *Emulator) uint16 {
+	e.registers.B = e.registers.H
+	return 1
+}
+
+func movBL(e *Emulator) uint16 {
+	e.registers.B = e.registers.L
+	return 1
+}
+
+func movBM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.registers.B = e.memory[offset]
+	return 1
+}
+
+func movBA(e *Emulator) uint16 {
+	e.registers.B = e.registers.A
+	return 1
+}
+
+func movCB(e *Emulator) uint16 {
+	e.registers.C = e.registers.B
+	return 1
+}
+
+func movCC(e *Emulator) uint16 {
+	e.registers.C = e.registers.C
+	return 1
+}
+
+func movCD(e *Emulator) uint16 {
+	e.registers.C = e.registers.D
+	return 1
+}
+
+func movCE(e *Emulator) uint16 {
+	e.registers.C = e.registers.E
+	return 1
+}
+
+func movCH(e *Emulator) uint16 {
+	e.registers.C = e.registers.H
+	return 1
+}
+
+func movCL(e *Emulator) uint16 {
+	e.registers.C = e.registers.L
+	return 1
+}
+
+func movCM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.registers.C = e.memory[offset]
+	return 1
+}
+
+func movCA(e *Emulator) uint16 {
+	e.registers.C = e.registers.A
+	return 1
+}
+
+func movDB(e *Emulator) uint16 {
+	e.registers.D = e.registers.B
+	return 1
+}
+
+func movDC(e *Emulator) uint16 {
+	e.registers.D = e.registers.C
+	return 1
+}
+
+func movDD(e *Emulator) uint16 {
+	e.registers.D = e.registers.D
+	return 1
+}
+
+func movDE(e *Emulator) uint16 {
+	e.registers.D = e.registers.E
+	return 1
+}
+
+func movDH(e *Emulator) uint16 {
+	e.registers.D = e.registers.H
+	return 1
+}
+
+func movDL(e *Emulator) uint16 {
+	e.registers.D = e.registers.L
+	return 1
+}
+
+func movDM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.registers.D = e.memory[offset]
+	return 1
+}
+
+func movDA(e *Emulator) uint16 {
+	e.registers.D = e.registers.A
+	return 1
+}
+
+func movEB(e *Emulator) uint16 {
+	e.registers.E = e.registers.B
+	return 1
+}
+
+func movEC(e *Emulator) uint16 {
+	e.registers.E = e.registers.C
+	return 1
+}
+
+func movED(e *Emulator) uint16 {
+	e.registers.E = e.registers.D
+	return 1
+}
+
+func movEE(e *Emulator) uint16 {
+	e.registers.E = e.registers.E
+	return 1
+}
+
+func movEH(e *Emulator) uint16 {
+	e.registers.E = e.registers.H
+	return 1
+}
+
+func movEL(e *Emulator) uint16 {
+	e.registers.E = e.registers.L
+	return 1
+}
+
+func movEM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.registers.E = e.memory[offset]
+	return 1
+}
+
+func movEA(e *Emulator) uint16 {
+	e.registers.E = e.registers.A
+	return 1
+}
+
+func movHB(e *Emulator) uint16 {
+	e.registers.H = e.registers.B
+	return 1
+}
+
+func movHC(e *Emulator) uint16 {
+	e.registers.H = e.registers.C
+	return 1
+}
+
+func movHD(e *Emulator) uint16 {
+	e.registers.H = e.registers.D
+	return 1
+}
+
+func movHE(e *Emulator) uint16 {
+	e.registers.H = e.registers.E
+	return 1
+}
+
+func movHH(e *Emulator) uint16 {
+	e.registers.H = e.registers.H
+	return 1
+}
+
+func movHL(e *Emulator) uint16 {
+	e.registers.H = e.registers.L
+	return 1
+}
+
+func movHM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.registers.H = e.memory[offset]
+	return 1
+}
+
+func movHA(e *Emulator) uint16 {
+	e.registers.H = e.registers.A
+	return 1
+}
+
+func movLB(e *Emulator) uint16 {
+	e.registers.L = e.registers.B
+	return 1
+}
+
+func movLC(e *Emulator) uint16 {
+	e.registers.L = e.registers.C
+	return 1
+}
+
+func movLD(e *Emulator) uint16 {
+	e.registers.L = e.registers.D
+	return 1
+}
+
+func movLE(e *Emulator) uint16 {
+	e.registers.L = e.registers.E
+	return 1
+}
+
+func movLH(e *Emulator) uint16 {
+	e.registers.L = e.registers.H
+	return 1
+}
+
+func movLL(e *Emulator) uint16 {
+	e.registers.L = e.registers.L
+	return 1
+}
+
+func movLM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.registers.L = e.memory[offset]
+	return 1
+}
+
+func movLA(e *Emulator) uint16 {
+	e.registers.L = e.registers.A
+	return 1
+}
+
+func movAB(e *Emulator) uint16 {
+	e.registers.A = e.registers.B
+	return 1
+}
+
+func movAC(e *Emulator) uint16 {
+	e.registers.A = e.registers.C
+	return 1
+}
+
+func movAD(e *Emulator) uint16 {
+	e.registers.A = e.registers.D
+	return 1
+}
+
+func movAE(e *Emulator) uint16 {
+	e.registers.A = e.registers.E
+	return 1
+}
+
+func movAH(e *Emulator) uint16 {
+	e.registers.A = e.registers.H
+	return 1
+}
+
+func movAL(e *Emulator) uint16 {
+	e.registers.A = e.registers.L
+	return 1
+}
+
+func movAM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.registers.A = e.memory[offset]
+	return 1
+}
+
+func movAA(e *Emulator) uint16 {
+	e.registers.A = e.registers.A
+	return 1
+}
+
+func movMB(e *Emulator) uint16 {
+	e.memory[e.getHL()] = e.registers.B
+	return 1
+}
+
+func movMC(e *Emulator) uint16 {
+	e.memory[e.getHL()] = e.registers.C
+	return 1
+}
+
+func movMD(e *Emulator) uint16 {
+	e.memory[e.getHL()] = e.registers.D
+	return 1
+}
+
+func movME(e *Emulator) uint16 {
+	e.memory[e.getHL()] = e.registers.E
+	return 1
+}
+
+func movMH(e *Emulator) uint16 {
+	e.memory[e.getHL()] = e.registers.H
+	return 1
+}
+
+func movML(e *Emulator) uint16 {
+	e.memory[e.getHL()] = e.registers.L
+	return 1
+}
+
+func movMA(e *Emulator) uint16 {
+	e.memory[e.getHL()] = e.registers.A
+	return 1
+}
+
+func sta(e *Emulator) uint16 {
+	e.memory[e.pc+2] = e.registers.A >> 4
+	e.memory[e.pc+1] = e.registers.A & 0x0f
+	return 3
+}
+
+func anaB(e *Emulator) uint16 {
+	e.andAccumulator(e.registers.B)
+	return 1
+}
+
+func anaC(e *Emulator) uint16 {
+	e.andAccumulator(e.registers.C)
+	return 1
+}
+
+func anaD(e *Emulator) uint16 {
+	e.andAccumulator(e.registers.D)
+	return 1
+}
+
+func anaE(e *Emulator) uint16 {
+	e.andAccumulator(e.registers.E)
+	return 1
+}
+
+func anaH(e *Emulator) uint16 {
+	e.andAccumulator(e.registers.H)
+	return 1
+}
+
+func anaL(e *Emulator) uint16 {
+	e.andAccumulator(e.registers.L)
+	return 1
+}
+
+func anaA(e *Emulator) uint16 {
+	e.andAccumulator(e.registers.A)
+	return 1
+}
+
+func anaM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.andAccumulator(e.memory[offset])
+	return 1
+}
+
+func xraB(e *Emulator) uint16 {
+	e.xorAccumulator(e.registers.B)
+	return 1
+}
+
+func xraC(e *Emulator) uint16 {
+	e.xorAccumulator(e.registers.C)
+	return 1
+}
+
+func xraD(e *Emulator) uint16 {
+	e.xorAccumulator(e.registers.D)
+	return 1
+}
+
+func xraE(e *Emulator) uint16 {
+	e.xorAccumulator(e.registers.E)
+	return 1
+}
+
+func xraH(e *Emulator) uint16 {
+	e.xorAccumulator(e.registers.H)
+	return 1
+}
+
+func xraL(e *Emulator) uint16 {
+	e.xorAccumulator(e.registers.L)
+	return 1
+}
+
+func xraA(e *Emulator) uint16 {
+	e.xorAccumulator(e.registers.A)
+	return 1
+}
+
+func xraM(e *Emulator) uint16 {
+	offset := e.getHL()
+	e.xorAccumulator(e.memory[offset])
+	return 1
+}
+
+func cpi(e *Emulator) uint16 {
+	e.compareAccumulator(e.memory[e.pc+1])
+	return 2
+}
+
+func in(e *Emulator) uint16 {
+	return 2
+}
+
+func out(e *Emulator) uint16 {
+	return 2
+}
+
+func ei(e *Emulator) uint16 {
+	e.intEnable = 1
+	return 1
+}
+
+func di(e *Emulator) uint16 {
+	e.intEnable = 0
 	return 1
 }
