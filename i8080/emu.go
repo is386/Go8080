@@ -6,16 +6,16 @@ import (
 )
 
 type Emulator struct {
-	memory    [64 * 1024]uint8
-	registers *Registers
+	mem       [64 * 1024]uint8
+	reg       *Registers
 	pc        uint16
 	sp        uint16
 	intEnable uint8
 	flags     *Flags
 }
 
-func NewEmulator() *Emulator {
-	return &Emulator{registers: &Registers{}, flags: &Flags{}, pc: 0x100}
+func NewEmulator(pcStart uint16) *Emulator {
+	return &Emulator{reg: &Registers{}, flags: &Flags{}, pc: pcStart}
 }
 
 func (e *Emulator) LoadRom(filename string, offset uint16) {
@@ -24,78 +24,100 @@ func (e *Emulator) LoadRom(filename string, offset uint16) {
 		panic(err)
 	}
 	for i := 0; i < len(rom); i++ {
-		e.memory[offset+uint16(i)] = rom[i]
+		e.mem[offset+uint16(i)] = rom[i]
 	}
 
 	// CPU DIAg
-	e.memory[0x7] = 0xc9
-	e.memory[0x59c] = 0xc3 //JMP
-	e.memory[0x59d] = 0xc2
-	e.memory[0x59e] = 0x05
+	e.mem[0x7] = 0xc9
+	e.mem[0x59c] = 0xc3 //JMP
+	e.mem[0x59d] = 0xc2
+	e.mem[0x59e] = 0x05
+}
+
+func (e *Emulator) fetch() uint8 {
+	return e.mem[e.pc]
+}
+
+func (e *Emulator) decode(opcode uint8) func(*Emulator) uint16 {
+	return INSTRUCTIONS[opcode]
+}
+
+func (e *Emulator) Execute(count int) bool {
+	opcode := e.fetch()
+	// fmt.Printf("\nPC:%04x OP:%02x SP:%04x BC:%04x DE:%04x HL:%04x A:%02x Cy:%d AC:%d S:%d Z:%d P:%d",
+	// 	e.pc, opcode, e.sp, e.getBC(), e.getDE(), e.getHL(), e.reg.A, e.flags.CY, e.flags.AC,
+	// 	e.flags.S, e.flags.Z, e.flags.P)
+	instr := e.decode(opcode)
+	steps := instr(e)
+	if steps == 5 {
+		fmt.Printf("unimplemented instruction: %x\n", opcode)
+		return false
+	}
+	e.pc += steps
+	if e.pc == 5 {
+		if e.reg.C == 9 {
+			fmt.Println()
+			offset := e.getDE()
+			str := e.mem[offset]
+			for str != '$' {
+				fmt.Printf("%c", str)
+				offset += 1
+				str = e.mem[offset]
+			}
+		} else if e.reg.C == 2 {
+			fmt.Printf("%c", e.reg.E)
+		}
+	} else if e.pc == 0 {
+		return false
+	}
+	return true
+}
+
+func (e *Emulator) getNextTwoBytes() uint16 {
+	return (uint16(e.mem[e.pc+2]) << 8) | uint16(e.mem[e.pc+1])
 }
 
 func (e *Emulator) getBC() uint16 {
-	return (uint16(e.registers.B) << 8) | uint16(e.registers.C)
+	return (uint16(e.reg.B) << 8) | uint16(e.reg.C)
 }
 
 func (e *Emulator) getDE() uint16 {
-	return (uint16(e.registers.D) << 8) | uint16(e.registers.E)
+	return (uint16(e.reg.D) << 8) | uint16(e.reg.E)
 }
 
 func (e *Emulator) getHL() uint16 {
-	return (uint16(e.registers.H) << 8) | uint16(e.registers.L)
+	return (uint16(e.reg.H) << 8) | uint16(e.reg.L)
 }
 
 func (e *Emulator) setBC(val uint16) {
-	e.registers.B = uint8(val >> 8)
-	e.registers.C = uint8(val & 0xff)
+	e.reg.B = uint8(val >> 8)
+	e.reg.C = uint8(val & 0xff)
 }
 
 func (e *Emulator) setDE(val uint16) {
-	e.registers.D = uint8(val >> 8)
-	e.registers.E = uint8(val & 0xff)
+	e.reg.D = uint8(val >> 8)
+	e.reg.E = uint8(val & 0xff)
 }
 
 func (e *Emulator) setHL(val uint16) {
-	e.registers.H = uint8(val >> 8)
-	e.registers.L = uint8(val & 0xff)
+	e.reg.H = uint8(val >> 8)
+	e.reg.L = uint8(val & 0xff)
 }
 
-func (e *Emulator) setZero(val uint16) {
-	if (val & 0xff) == 0 {
-		e.flags.Z = 1
+func (e *Emulator) setCarryArith(val uint16) {
+	if val > 0xff {
+		e.flags.CY = 1
 	} else {
-		e.flags.Z = 0
+		e.flags.CY = 0
 	}
 }
 
-func (e *Emulator) setSign(val uint16) {
-	if (val & 0x80) != 0 {
-		e.flags.S = 1
+func (e *Emulator) setCarryDad(val uint32) {
+	if (val & 0xffff0000) > 0 {
+		e.flags.CY = 1
 	} else {
-		e.flags.S = 0
+		e.flags.CY = 0
 	}
-}
-
-func parity(num uint16) uint8 {
-	ones := uint16(0)
-	for i := 0; i < 8; i++ {
-		ones += ((num >> i) & 1)
-	}
-	if (ones % 2) == 0 {
-		return 1
-	}
-	return 0
-}
-
-func (e *Emulator) setParity(val uint16) {
-	e.flags.P = parity(val)
-}
-
-func (e *Emulator) setZSP(val uint8) {
-	e.setZero(uint16(val))
-	e.setSign(uint16(val))
-	e.setParity(uint16(val))
 }
 
 func (e *Emulator) setAuxCarry(a uint8, b uint8, cy uint8) {
@@ -124,79 +146,104 @@ func (e *Emulator) setAuxCarryDcr(val uint8) {
 	}
 }
 
+func (e *Emulator) setZero(val uint16) {
+	if (val & 0xff) == 0 {
+		e.flags.Z = 1
+	} else {
+		e.flags.Z = 0
+	}
+}
+
+func (e *Emulator) setSign(val uint16) {
+	if (val & 0x80) != 0 {
+		e.flags.S = 1
+	} else {
+		e.flags.S = 0
+	}
+}
+
+func (e *Emulator) setParity(val uint16) {
+	e.flags.P = parity(val)
+}
+
+func parity(num uint16) uint8 {
+	ones := uint16(0)
+	for i := 0; i < 8; i++ {
+		ones += ((num >> i) & 1)
+	}
+	if (ones % 2) == 0 {
+		return 1
+	}
+	return 0
+}
+
+func (e *Emulator) setZSP(val uint8) {
+	e.setZero(uint16(val))
+	e.setSign(uint16(val))
+	e.setParity(uint16(val))
+}
+
 func (e *Emulator) addToAccumulator(val uint8, cy uint8) {
-	ans := uint16(e.registers.A) + uint16(val) + uint16(cy)
+	ans := uint16(e.reg.A) + uint16(val) + uint16(cy)
 	e.setZero(ans)
 	e.setSign(ans)
-	if ans > 0xff {
-		e.flags.CY = 1
-	} else {
-		e.flags.CY = 0
-	}
+	e.setCarryArith(ans)
 	e.setParity(ans & 0xff)
-	e.setAuxCarry(e.registers.A, val, cy)
-	e.registers.A = uint8(ans & 0xff)
+	e.setAuxCarry(e.reg.A, val, cy)
+	e.reg.A = uint8(ans & 0xff)
 }
 
 func (e *Emulator) subFromAccumulator(val uint8, cy uint8) {
-	ans := uint16(e.registers.A) - uint16(val) - uint16(cy)
+	ans := uint16(e.reg.A) - uint16(val) - uint16(cy)
 	e.setZero(ans)
 	e.setSign(ans)
-	if ans > 0xff {
-		e.flags.CY = 1
-	} else {
-		e.flags.CY = 0
-	}
+	e.setCarryArith(ans)
 	e.setParity(ans & 0xff)
-	e.setAuxCarry(e.registers.A, val, cy)
-	e.registers.A = uint8(ans)
+	e.setAuxCarry(e.reg.A, val, cy)
+	e.reg.A = uint8(ans)
 }
 
 func (e *Emulator) andAccumulator(val uint8) {
-	ans := uint16(e.registers.A & val)
+	ans := uint16(e.reg.A & val)
 	e.setZero(ans)
 	e.setSign(ans)
 	e.flags.CY = 0
 	e.setParity(ans & 0xff)
-	if ((e.registers.A | val) & 0x08) != 0 {
+	if ((e.reg.A | val) & 0x08) != 0 {
 		e.flags.AC = 1
 	} else {
 		e.flags.AC = 0
 	}
-	e.registers.A = uint8(ans & 0xff)
+	e.reg.A = uint8(ans & 0xff)
 }
 
 func (e *Emulator) xorAccumulator(val uint8) {
-	ans := uint16(e.registers.A ^ val)
+	ans := uint16(e.reg.A ^ val)
 	e.setZero(ans)
 	e.setSign(ans)
 	e.flags.CY = 0
 	e.setParity(ans & 0xff)
 	e.flags.AC = 0
-	e.registers.A = uint8(ans & 0xff)
+	e.reg.A = uint8(ans & 0xff)
 }
 
 func (e *Emulator) orAccumulator(val uint8) {
-	ans := uint16(e.registers.A | val)
+	ans := uint16(e.reg.A | val)
 	e.setZero(ans)
 	e.setSign(ans)
 	e.flags.CY = 0
 	e.setParity(ans & 0xff)
 	e.flags.AC = 0
-	e.registers.A = uint8(ans & 0xff)
+	e.reg.A = uint8(ans & 0xff)
 }
 
 func (e *Emulator) compareAccumulator(val uint8) {
-	ans := uint16(e.registers.A) - uint16(val)
+	ans := uint16(e.reg.A) - uint16(val)
 	e.setZero(ans)
 	e.setSign(ans)
-	if ans > 0xff {
-		e.flags.CY = 1
-	} else {
-		e.flags.CY = 0
-	}
+	e.setCarryArith(ans)
 	e.setParity(ans)
-	ac := uint16(e.registers.A) ^ ans ^ uint16(val)
+	ac := uint16(e.reg.A) ^ ans ^ uint16(val)
 	if ac == 1 {
 		ac = 0
 	} else {
@@ -209,46 +256,6 @@ func (e *Emulator) compareAccumulator(val uint8) {
 	}
 }
 
-func (e *Emulator) fetch() uint8 {
-	return e.memory[e.pc]
-}
-
-func (e *Emulator) decode(opcode uint8) func(*Emulator) uint16 {
-	return INSTRUCTIONS[opcode]
-}
-
-func (e *Emulator) Execute(count int) bool {
-	opcode := e.fetch()
-	fmt.Printf("\nPC:%04x OP:%02x SP:%04x BC:%04x DE:%04x HL:%04x A:%02x Cy:%d AC:%d S:%d Z:%d P:%d",
-		e.pc, opcode, e.sp, e.getBC(), e.getDE(), e.getHL(), e.registers.A, e.flags.CY, e.flags.AC,
-		e.flags.S, e.flags.Z, e.flags.P)
-	instr := e.decode(opcode)
-	steps := instr(e)
-	if steps == 5 {
-		fmt.Printf("unimplemented instruction: %x\n", opcode)
-		return false
-	}
-	e.pc += steps
-	if e.pc == 5 {
-		if e.registers.C == 9 {
-			fmt.Println()
-			offset := e.getDE()
-			str := e.memory[offset]
-			for str != '$' {
-				fmt.Printf("%c", str)
-				offset += 1
-				str = e.memory[offset]
-			}
-		} else if e.registers.C == 2 {
-			fmt.Printf("%c", e.registers.E)
-		}
-	} else if e.pc == 0 {
-		fmt.Printf("\n\n%x", e.memory[275])
-		return false
-	}
-	return true
-}
-
 func unimplemented(e *Emulator) uint16 {
 	return 5
 }
@@ -258,300 +265,300 @@ func noOp(e *Emulator) uint16 {
 }
 
 func addB(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.B, 0)
+	e.addToAccumulator(e.reg.B, 0)
 	return 1
 }
 
 func addC(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.C, 0)
+	e.addToAccumulator(e.reg.C, 0)
 	return 1
 }
 
 func addD(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.D, 0)
+	e.addToAccumulator(e.reg.D, 0)
 	return 1
 }
 
 func addE(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.E, 0)
+	e.addToAccumulator(e.reg.E, 0)
 	return 1
 }
 
 func addH(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.H, 0)
+	e.addToAccumulator(e.reg.H, 0)
 	return 1
 }
 
 func addL(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.L, 0)
+	e.addToAccumulator(e.reg.L, 0)
 	return 1
 }
 
 func addM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.addToAccumulator(e.memory[offset], 0)
+	e.addToAccumulator(e.mem[offset], 0)
 	return 1
 }
 
 func addA(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.A, 0)
+	e.addToAccumulator(e.reg.A, 0)
 	return 1
 }
 
 func adi(e *Emulator) uint16 {
-	e.addToAccumulator(e.memory[e.pc+1], 0)
+	e.addToAccumulator(e.mem[e.pc+1], 0)
 	return 2
 }
 
 func adcB(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.B, e.flags.CY)
+	e.addToAccumulator(e.reg.B, e.flags.CY)
 	return 1
 }
 
 func adcC(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.C, e.flags.CY)
+	e.addToAccumulator(e.reg.C, e.flags.CY)
 	return 1
 }
 
 func adcD(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.D, e.flags.CY)
+	e.addToAccumulator(e.reg.D, e.flags.CY)
 	return 1
 }
 
 func adcE(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.E, e.flags.CY)
+	e.addToAccumulator(e.reg.E, e.flags.CY)
 	return 1
 }
 
 func adcH(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.H, e.flags.CY)
+	e.addToAccumulator(e.reg.H, e.flags.CY)
 	return 1
 }
 
 func adcL(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.L, e.flags.CY)
+	e.addToAccumulator(e.reg.L, e.flags.CY)
 	return 1
 }
 
 func adcA(e *Emulator) uint16 {
-	e.addToAccumulator(e.registers.A, e.flags.CY)
+	e.addToAccumulator(e.reg.A, e.flags.CY)
 	return 1
 }
 
 func adcM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.addToAccumulator(e.memory[offset], e.flags.CY)
+	e.addToAccumulator(e.mem[offset], e.flags.CY)
 	return 1
 }
 
 func aci(e *Emulator) uint16 {
-	e.addToAccumulator(e.memory[e.pc+1], e.flags.CY)
+	e.addToAccumulator(e.mem[e.pc+1], e.flags.CY)
 	return 2
 }
 
 func subB(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.B, 0)
+	e.subFromAccumulator(e.reg.B, 0)
 	return 1
 }
 
 func subC(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.C, 0)
+	e.subFromAccumulator(e.reg.C, 0)
 	return 1
 }
 
 func subD(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.D, 0)
+	e.subFromAccumulator(e.reg.D, 0)
 	return 1
 }
 
 func subE(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.E, 0)
+	e.subFromAccumulator(e.reg.E, 0)
 	return 1
 }
 
 func subH(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.H, 0)
+	e.subFromAccumulator(e.reg.H, 0)
 	return 1
 }
 
 func subL(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.L, 0)
+	e.subFromAccumulator(e.reg.L, 0)
 	return 1
 }
 
 func subA(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.A, 0)
+	e.subFromAccumulator(e.reg.A, 0)
 	return 1
 }
 
 func subM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.subFromAccumulator(e.memory[offset], 0)
+	e.subFromAccumulator(e.mem[offset], 0)
 	return 1
 }
 
 func sui(e *Emulator) uint16 {
-	e.subFromAccumulator(e.memory[e.pc+1], 0)
+	e.subFromAccumulator(e.mem[e.pc+1], 0)
 	return 2
 }
 
 func sbbB(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.B, e.flags.CY)
+	e.subFromAccumulator(e.reg.B, e.flags.CY)
 	return 1
 }
 
 func sbbC(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.C, e.flags.CY)
+	e.subFromAccumulator(e.reg.C, e.flags.CY)
 	return 1
 }
 
 func sbbD(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.D, e.flags.CY)
+	e.subFromAccumulator(e.reg.D, e.flags.CY)
 	return 1
 }
 
 func sbbE(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.E, e.flags.CY)
+	e.subFromAccumulator(e.reg.E, e.flags.CY)
 	return 1
 }
 
 func sbbH(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.H, e.flags.CY)
+	e.subFromAccumulator(e.reg.H, e.flags.CY)
 	return 1
 }
 
 func sbbL(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.L, e.flags.CY)
+	e.subFromAccumulator(e.reg.L, e.flags.CY)
 	return 1
 }
 
 func sbbA(e *Emulator) uint16 {
-	e.subFromAccumulator(e.registers.A, e.flags.CY)
+	e.subFromAccumulator(e.reg.A, e.flags.CY)
 	return 1
 }
 
 func sbbM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.subFromAccumulator(e.memory[offset], e.flags.CY)
+	e.subFromAccumulator(e.mem[offset], e.flags.CY)
 	return 1
 }
 
 func sbi(e *Emulator) uint16 {
-	e.subFromAccumulator(e.memory[e.pc+1], e.flags.CY)
+	e.subFromAccumulator(e.mem[e.pc+1], e.flags.CY)
 	return 2
 }
 
 func inrB(e *Emulator) uint16 {
-	e.registers.B += 1
-	e.setZSP(e.registers.B)
-	e.setAuxCarryInr(e.registers.B)
+	e.reg.B += 1
+	e.setZSP(e.reg.B)
+	e.setAuxCarryInr(e.reg.B)
 	return 1
 }
 
 func inrC(e *Emulator) uint16 {
-	e.registers.C += 1
-	e.setZSP(e.registers.C)
-	e.setAuxCarryInr(e.registers.C)
+	e.reg.C += 1
+	e.setZSP(e.reg.C)
+	e.setAuxCarryInr(e.reg.C)
 	return 1
 }
 
 func inrD(e *Emulator) uint16 {
-	e.registers.D += 1
-	e.setZSP(e.registers.D)
-	e.setAuxCarryInr(e.registers.D)
+	e.reg.D += 1
+	e.setZSP(e.reg.D)
+	e.setAuxCarryInr(e.reg.D)
 	return 1
 }
 
 func inrE(e *Emulator) uint16 {
-	e.registers.E += 1
-	e.setZSP(e.registers.E)
-	e.setAuxCarryInr(e.registers.E)
+	e.reg.E += 1
+	e.setZSP(e.reg.E)
+	e.setAuxCarryInr(e.reg.E)
 	return 1
 }
 
 func inrH(e *Emulator) uint16 {
-	e.registers.H += 1
-	e.setZSP(e.registers.H)
-	e.setAuxCarryInr(e.registers.H)
+	e.reg.H += 1
+	e.setZSP(e.reg.H)
+	e.setAuxCarryInr(e.reg.H)
 	return 1
 }
 
 func inrL(e *Emulator) uint16 {
-	e.registers.L += 1
-	e.setZSP(e.registers.L)
-	e.setAuxCarryInr(e.registers.L)
+	e.reg.L += 1
+	e.setZSP(e.reg.L)
+	e.setAuxCarryInr(e.reg.L)
 	return 1
 }
 
 func inrA(e *Emulator) uint16 {
-	e.registers.A += 1
-	e.setZSP(e.registers.A)
-	e.setAuxCarryInr(e.registers.A)
+	e.reg.A += 1
+	e.setZSP(e.reg.A)
+	e.setAuxCarryInr(e.reg.A)
 	return 1
 }
 
 func inrM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.memory[offset] += 1
-	e.setZSP(e.memory[offset])
-	e.setAuxCarryInr(e.memory[offset])
+	e.mem[offset] += 1
+	e.setZSP(e.mem[offset])
+	e.setAuxCarryInr(e.mem[offset])
 	return 1
 }
 
 func dcrB(e *Emulator) uint16 {
-	e.registers.B -= 1
-	e.setZSP(e.registers.B)
-	e.setAuxCarryDcr(e.registers.B)
+	e.reg.B -= 1
+	e.setZSP(e.reg.B)
+	e.setAuxCarryDcr(e.reg.B)
 	return 1
 }
 
 func dcrC(e *Emulator) uint16 {
-	e.registers.C -= 1
-	e.setZSP(e.registers.C)
-	e.setAuxCarryDcr(e.registers.C)
+	e.reg.C -= 1
+	e.setZSP(e.reg.C)
+	e.setAuxCarryDcr(e.reg.C)
 	return 1
 }
 
 func dcrD(e *Emulator) uint16 {
-	e.registers.D -= 1
-	e.setZSP(e.registers.D)
-	e.setAuxCarryDcr(e.registers.D)
+	e.reg.D -= 1
+	e.setZSP(e.reg.D)
+	e.setAuxCarryDcr(e.reg.D)
 	return 1
 }
 
 func dcrE(e *Emulator) uint16 {
-	e.registers.E -= 1
-	e.setZSP(e.registers.E)
-	e.setAuxCarryDcr(e.registers.E)
+	e.reg.E -= 1
+	e.setZSP(e.reg.E)
+	e.setAuxCarryDcr(e.reg.E)
 	return 1
 }
 
 func dcrH(e *Emulator) uint16 {
-	e.registers.H -= 1
-	e.setZSP(e.registers.H)
-	e.setAuxCarryDcr(e.registers.H)
+	e.reg.H -= 1
+	e.setZSP(e.reg.H)
+	e.setAuxCarryDcr(e.reg.H)
 	return 1
 }
 
 func dcrL(e *Emulator) uint16 {
-	e.registers.L -= 1
-	e.setZSP(e.registers.L)
-	e.setAuxCarryDcr(e.registers.L)
+	e.reg.L -= 1
+	e.setZSP(e.reg.L)
+	e.setAuxCarryDcr(e.reg.L)
 	return 1
 }
 
 func dcrA(e *Emulator) uint16 {
-	e.registers.A -= 1
-	e.setZSP(e.registers.A)
-	e.setAuxCarryDcr(e.registers.A)
+	e.reg.A -= 1
+	e.setZSP(e.reg.A)
+	e.setAuxCarryDcr(e.reg.A)
 	return 1
 }
 
 func dcrM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.memory[offset] -= 1
-	e.setZSP(e.memory[offset])
-	e.setAuxCarryInr(e.memory[offset])
+	e.mem[offset] -= 1
+	e.setZSP(e.mem[offset])
+	e.setAuxCarryDcr(e.mem[offset])
 	return 1
 }
 
@@ -598,51 +605,35 @@ func dcxSP(e *Emulator) uint16 {
 func dadB(e *Emulator) uint16 {
 	ans := uint32(e.getHL()) + uint32(e.getBC())
 	e.setHL(uint16(ans))
-	if (ans & 0xffff0000) > 0 {
-		e.flags.CY = 1
-	} else {
-		e.flags.CY = 0
-	}
+	e.setCarryDad(ans)
 	return 1
 }
 
 func dadD(e *Emulator) uint16 {
 	ans := uint32(e.getHL()) + uint32(e.getDE())
 	e.setHL(uint16(ans))
-	if (ans & 0xffff0000) > 0 {
-		e.flags.CY = 1
-	} else {
-		e.flags.CY = 0
-	}
+	e.setCarryDad(ans)
 	return 1
 }
 
 func dadH(e *Emulator) uint16 {
 	ans := uint32(e.getHL()) + uint32(e.getHL())
 	e.setHL(uint16(ans))
-	if (ans & 0xffff0000) > 0 {
-		e.flags.CY = 1
-	} else {
-		e.flags.CY = 0
-	}
+	e.setCarryDad(ans)
 	return 1
 }
 
 func dadSP(e *Emulator) uint16 {
 	ans := uint32(e.getHL()) + uint32(e.sp)
 	e.setHL(uint16(ans))
-	if (ans & 0xffff0000) > 0 {
-		e.flags.CY = 1
-	} else {
-		e.flags.CY = 0
-	}
+	e.setCarryDad(ans)
 	return 1
 }
 
 func daa(e *Emulator) uint16 {
 	cy := e.flags.CY
-	lsb := e.registers.A & 0x0f
-	msb := e.registers.A >> 4
+	lsb := e.reg.A & 0x0f
+	msb := e.reg.A >> 4
 	correction := 0
 
 	if lsb > 9 || e.flags.AC == 1 {
@@ -660,7 +651,7 @@ func daa(e *Emulator) uint16 {
 }
 
 func jmp(e *Emulator) uint16 {
-	e.pc = (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
+	e.pc = e.getNextTwoBytes()
 	return 0
 }
 
@@ -721,7 +712,7 @@ func jm(e *Emulator) uint16 {
 }
 
 func ret(e *Emulator) uint16 {
-	e.pc = (uint16(e.memory[e.sp]) | (uint16(e.memory[e.sp+1]) << 8))
+	e.pc = (uint16(e.mem[e.sp]) | (uint16(e.mem[e.sp+1]) << 8))
 	e.sp += 2
 	return 1
 }
@@ -783,51 +774,51 @@ func rm(e *Emulator) uint16 {
 }
 
 func mviB(e *Emulator) uint16 {
-	e.registers.B = e.memory[e.pc+1]
+	e.reg.B = e.mem[e.pc+1]
 	return 2
 }
 
 func mviC(e *Emulator) uint16 {
-	e.registers.C = e.memory[e.pc+1]
+	e.reg.C = e.mem[e.pc+1]
 	return 2
 }
 
 func mviD(e *Emulator) uint16 {
-	e.registers.D = e.memory[e.pc+1]
+	e.reg.D = e.mem[e.pc+1]
 	return 2
 }
 
 func mviE(e *Emulator) uint16 {
-	e.registers.E = e.memory[e.pc+1]
+	e.reg.E = e.mem[e.pc+1]
 	return 2
 }
 
 func mviH(e *Emulator) uint16 {
-	e.registers.H = e.memory[e.pc+1]
+	e.reg.H = e.mem[e.pc+1]
 	return 2
 }
 
 func mviL(e *Emulator) uint16 {
-	e.registers.L = e.memory[e.pc+1]
+	e.reg.L = e.mem[e.pc+1]
 	return 2
 }
 
 func mviA(e *Emulator) uint16 {
-	e.registers.A = e.memory[e.pc+1]
+	e.reg.A = e.mem[e.pc+1]
 	return 2
 }
 
 func mviM(e *Emulator) uint16 {
-	e.memory[e.getHL()] = e.memory[e.pc+1]
+	e.mem[e.getHL()] = e.mem[e.pc+1]
 	return 2
 }
 
 func call(e *Emulator) uint16 {
 	ret := e.pc + 2
-	e.memory[e.sp-1] = uint8(ret>>8) & uint8(0xff)
-	e.memory[e.sp-2] = uint8(ret) & uint8(0xff)
+	e.mem[e.sp-1] = uint8(ret>>8) & uint8(0xff)
+	e.mem[e.sp-2] = uint8(ret) & uint8(0xff)
 	e.sp = e.sp - 2
-	e.pc = (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
+	e.pc = e.getNextTwoBytes()
 	return 0
 }
 
@@ -888,41 +879,40 @@ func cm(e *Emulator) uint16 {
 }
 
 func lxiB(e *Emulator) uint16 {
-	e.registers.C = e.memory[e.pc+1]
-	e.registers.B = e.memory[e.pc+2]
+	e.reg.C = e.mem[e.pc+1]
+	e.reg.B = e.mem[e.pc+2]
 	return 3
 }
 
 func lxiD(e *Emulator) uint16 {
-	e.registers.E = e.memory[e.pc+1]
-	e.registers.D = e.memory[e.pc+2]
+	e.reg.E = e.mem[e.pc+1]
+	e.reg.D = e.mem[e.pc+2]
 	return 3
 }
 
 func lxiH(e *Emulator) uint16 {
-	e.registers.L = e.memory[e.pc+1]
-	e.registers.H = e.memory[e.pc+2]
+	e.reg.L = e.mem[e.pc+1]
+	e.reg.H = e.mem[e.pc+2]
 	return 3
 }
 
 func lxiSP(e *Emulator) uint16 {
-	e.sp = (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
+	e.sp = e.getNextTwoBytes()
 	return 3
 }
 
 func lda(e *Emulator) uint16 {
-	addr := (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
-	e.registers.A = e.memory[addr]
+	e.reg.A = e.mem[e.getNextTwoBytes()]
 	return 3
 }
 
 func ldaxB(e *Emulator) uint16 {
-	e.registers.A = e.memory[e.getBC()]
+	e.reg.A = e.mem[e.getBC()]
 	return 1
 }
 
 func ldaxD(e *Emulator) uint16 {
-	e.registers.A = e.memory[e.getDE()]
+	e.reg.A = e.mem[e.getDE()]
 	return 1
 }
 
@@ -931,43 +921,43 @@ func movBB(e *Emulator) uint16 {
 }
 
 func movBC(e *Emulator) uint16 {
-	e.registers.B = e.registers.C
+	e.reg.B = e.reg.C
 	return 1
 }
 
 func movBD(e *Emulator) uint16 {
-	e.registers.B = e.registers.D
+	e.reg.B = e.reg.D
 	return 1
 }
 
 func movBE(e *Emulator) uint16 {
-	e.registers.B = e.registers.E
+	e.reg.B = e.reg.E
 	return 1
 }
 
 func movBH(e *Emulator) uint16 {
-	e.registers.B = e.registers.H
+	e.reg.B = e.reg.H
 	return 1
 }
 
 func movBL(e *Emulator) uint16 {
-	e.registers.B = e.registers.L
+	e.reg.B = e.reg.L
 	return 1
 }
 
 func movBM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.registers.B = e.memory[offset]
+	e.reg.B = e.mem[offset]
 	return 1
 }
 
 func movBA(e *Emulator) uint16 {
-	e.registers.B = e.registers.A
+	e.reg.B = e.reg.A
 	return 1
 }
 
 func movCB(e *Emulator) uint16 {
-	e.registers.C = e.registers.B
+	e.reg.C = e.reg.B
 	return 1
 }
 
@@ -976,43 +966,43 @@ func movCC(e *Emulator) uint16 {
 }
 
 func movCD(e *Emulator) uint16 {
-	e.registers.C = e.registers.D
+	e.reg.C = e.reg.D
 	return 1
 }
 
 func movCE(e *Emulator) uint16 {
-	e.registers.C = e.registers.E
+	e.reg.C = e.reg.E
 	return 1
 }
 
 func movCH(e *Emulator) uint16 {
-	e.registers.C = e.registers.H
+	e.reg.C = e.reg.H
 	return 1
 }
 
 func movCL(e *Emulator) uint16 {
-	e.registers.C = e.registers.L
+	e.reg.C = e.reg.L
 	return 1
 }
 
 func movCM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.registers.C = e.memory[offset]
+	e.reg.C = e.mem[offset]
 	return 1
 }
 
 func movCA(e *Emulator) uint16 {
-	e.registers.C = e.registers.A
+	e.reg.C = e.reg.A
 	return 1
 }
 
 func movDB(e *Emulator) uint16 {
-	e.registers.D = e.registers.B
+	e.reg.D = e.reg.B
 	return 1
 }
 
 func movDC(e *Emulator) uint16 {
-	e.registers.D = e.registers.C
+	e.reg.D = e.reg.C
 	return 1
 }
 
@@ -1021,43 +1011,43 @@ func movDD(e *Emulator) uint16 {
 }
 
 func movDE(e *Emulator) uint16 {
-	e.registers.D = e.registers.E
+	e.reg.D = e.reg.E
 	return 1
 }
 
 func movDH(e *Emulator) uint16 {
-	e.registers.D = e.registers.H
+	e.reg.D = e.reg.H
 	return 1
 }
 
 func movDL(e *Emulator) uint16 {
-	e.registers.D = e.registers.L
+	e.reg.D = e.reg.L
 	return 1
 }
 
 func movDM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.registers.D = e.memory[offset]
+	e.reg.D = e.mem[offset]
 	return 1
 }
 
 func movDA(e *Emulator) uint16 {
-	e.registers.D = e.registers.A
+	e.reg.D = e.reg.A
 	return 1
 }
 
 func movEB(e *Emulator) uint16 {
-	e.registers.E = e.registers.B
+	e.reg.E = e.reg.B
 	return 1
 }
 
 func movEC(e *Emulator) uint16 {
-	e.registers.E = e.registers.C
+	e.reg.E = e.reg.C
 	return 1
 }
 
 func movED(e *Emulator) uint16 {
-	e.registers.E = e.registers.D
+	e.reg.E = e.reg.D
 	return 1
 }
 
@@ -1066,43 +1056,43 @@ func movEE(e *Emulator) uint16 {
 }
 
 func movEH(e *Emulator) uint16 {
-	e.registers.E = e.registers.H
+	e.reg.E = e.reg.H
 	return 1
 }
 
 func movEL(e *Emulator) uint16 {
-	e.registers.E = e.registers.L
+	e.reg.E = e.reg.L
 	return 1
 }
 
 func movEM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.registers.E = e.memory[offset]
+	e.reg.E = e.mem[offset]
 	return 1
 }
 
 func movEA(e *Emulator) uint16 {
-	e.registers.E = e.registers.A
+	e.reg.E = e.reg.A
 	return 1
 }
 
 func movHB(e *Emulator) uint16 {
-	e.registers.H = e.registers.B
+	e.reg.H = e.reg.B
 	return 1
 }
 
 func movHC(e *Emulator) uint16 {
-	e.registers.H = e.registers.C
+	e.reg.H = e.reg.C
 	return 1
 }
 
 func movHD(e *Emulator) uint16 {
-	e.registers.H = e.registers.D
+	e.reg.H = e.reg.D
 	return 1
 }
 
 func movHE(e *Emulator) uint16 {
-	e.registers.H = e.registers.E
+	e.reg.H = e.reg.E
 	return 1
 }
 
@@ -1111,43 +1101,43 @@ func movHH(e *Emulator) uint16 {
 }
 
 func movHL(e *Emulator) uint16 {
-	e.registers.H = e.registers.L
+	e.reg.H = e.reg.L
 	return 1
 }
 
 func movHM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.registers.H = e.memory[offset]
+	e.reg.H = e.mem[offset]
 	return 1
 }
 
 func movHA(e *Emulator) uint16 {
-	e.registers.H = e.registers.A
+	e.reg.H = e.reg.A
 	return 1
 }
 
 func movLB(e *Emulator) uint16 {
-	e.registers.L = e.registers.B
+	e.reg.L = e.reg.B
 	return 1
 }
 
 func movLC(e *Emulator) uint16 {
-	e.registers.L = e.registers.C
+	e.reg.L = e.reg.C
 	return 1
 }
 
 func movLD(e *Emulator) uint16 {
-	e.registers.L = e.registers.D
+	e.reg.L = e.reg.D
 	return 1
 }
 
 func movLE(e *Emulator) uint16 {
-	e.registers.L = e.registers.E
+	e.reg.L = e.reg.E
 	return 1
 }
 
 func movLH(e *Emulator) uint16 {
-	e.registers.L = e.registers.H
+	e.reg.L = e.reg.H
 	return 1
 }
 
@@ -1157,48 +1147,48 @@ func movLL(e *Emulator) uint16 {
 
 func movLM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.registers.L = e.memory[offset]
+	e.reg.L = e.mem[offset]
 	return 1
 }
 
 func movLA(e *Emulator) uint16 {
-	e.registers.L = e.registers.A
+	e.reg.L = e.reg.A
 	return 1
 }
 
 func movAB(e *Emulator) uint16 {
-	e.registers.A = e.registers.B
+	e.reg.A = e.reg.B
 	return 1
 }
 
 func movAC(e *Emulator) uint16 {
-	e.registers.A = e.registers.C
+	e.reg.A = e.reg.C
 	return 1
 }
 
 func movAD(e *Emulator) uint16 {
-	e.registers.A = e.registers.D
+	e.reg.A = e.reg.D
 	return 1
 }
 
 func movAE(e *Emulator) uint16 {
-	e.registers.A = e.registers.E
+	e.reg.A = e.reg.E
 	return 1
 }
 
 func movAH(e *Emulator) uint16 {
-	e.registers.A = e.registers.H
+	e.reg.A = e.reg.H
 	return 1
 }
 
 func movAL(e *Emulator) uint16 {
-	e.registers.A = e.registers.L
+	e.reg.A = e.reg.L
 	return 1
 }
 
 func movAM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.registers.A = e.memory[offset]
+	e.reg.A = e.mem[offset]
 	return 1
 }
 
@@ -1207,237 +1197,236 @@ func movAA(e *Emulator) uint16 {
 }
 
 func movMB(e *Emulator) uint16 {
-	e.memory[e.getHL()] = e.registers.B
+	e.mem[e.getHL()] = e.reg.B
 	return 1
 }
 
 func movMC(e *Emulator) uint16 {
-	e.memory[e.getHL()] = e.registers.C
+	e.mem[e.getHL()] = e.reg.C
 	return 1
 }
 
 func movMD(e *Emulator) uint16 {
-	e.memory[e.getHL()] = e.registers.D
+	e.mem[e.getHL()] = e.reg.D
 	return 1
 }
 
 func movME(e *Emulator) uint16 {
-	e.memory[e.getHL()] = e.registers.E
+	e.mem[e.getHL()] = e.reg.E
 	return 1
 }
 
 func movMH(e *Emulator) uint16 {
-	e.memory[e.getHL()] = e.registers.H
+	e.mem[e.getHL()] = e.reg.H
 	return 1
 }
 
 func movML(e *Emulator) uint16 {
-	e.memory[e.getHL()] = e.registers.L
+	e.mem[e.getHL()] = e.reg.L
 	return 1
 }
 
 func movMA(e *Emulator) uint16 {
-	e.memory[e.getHL()] = e.registers.A
+	e.mem[e.getHL()] = e.reg.A
 	return 1
 }
 
 func sta(e *Emulator) uint16 {
-	addr := (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
-	e.memory[addr] = e.registers.A
+	e.mem[e.getNextTwoBytes()] = e.reg.A
 	return 3
 }
 
 func staxB(e *Emulator) uint16 {
-	e.memory[e.getBC()] = e.registers.A
+	e.mem[e.getBC()] = e.reg.A
 	return 1
 }
 
 func staxD(e *Emulator) uint16 {
-	e.memory[e.getDE()] = e.registers.A
+	e.mem[e.getDE()] = e.reg.A
 	return 1
 }
 
 func anaB(e *Emulator) uint16 {
-	e.andAccumulator(e.registers.B)
+	e.andAccumulator(e.reg.B)
 	return 1
 }
 
 func anaC(e *Emulator) uint16 {
-	e.andAccumulator(e.registers.C)
+	e.andAccumulator(e.reg.C)
 	return 1
 }
 
 func anaD(e *Emulator) uint16 {
-	e.andAccumulator(e.registers.D)
+	e.andAccumulator(e.reg.D)
 	return 1
 }
 
 func anaE(e *Emulator) uint16 {
-	e.andAccumulator(e.registers.E)
+	e.andAccumulator(e.reg.E)
 	return 1
 }
 
 func anaH(e *Emulator) uint16 {
-	e.andAccumulator(e.registers.H)
+	e.andAccumulator(e.reg.H)
 	return 1
 }
 
 func anaL(e *Emulator) uint16 {
-	e.andAccumulator(e.registers.L)
+	e.andAccumulator(e.reg.L)
 	return 1
 }
 
 func anaA(e *Emulator) uint16 {
-	e.andAccumulator(e.registers.A)
+	e.andAccumulator(e.reg.A)
 	return 1
 }
 
 func anaM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.andAccumulator(e.memory[offset])
+	e.andAccumulator(e.mem[offset])
 	return 1
 }
 
 func ani(e *Emulator) uint16 {
-	e.andAccumulator(e.memory[e.pc+1])
+	e.andAccumulator(e.mem[e.pc+1])
 	return 2
 }
 
 func oraB(e *Emulator) uint16 {
-	e.orAccumulator(e.registers.B)
+	e.orAccumulator(e.reg.B)
 	return 1
 }
 
 func oraC(e *Emulator) uint16 {
-	e.orAccumulator(e.registers.C)
+	e.orAccumulator(e.reg.C)
 	return 1
 }
 
 func oraD(e *Emulator) uint16 {
-	e.orAccumulator(e.registers.D)
+	e.orAccumulator(e.reg.D)
 	return 1
 }
 
 func oraE(e *Emulator) uint16 {
-	e.orAccumulator(e.registers.E)
+	e.orAccumulator(e.reg.E)
 	return 1
 }
 
 func oraH(e *Emulator) uint16 {
-	e.orAccumulator(e.registers.H)
+	e.orAccumulator(e.reg.H)
 	return 1
 }
 
 func oraL(e *Emulator) uint16 {
-	e.orAccumulator(e.registers.L)
+	e.orAccumulator(e.reg.L)
 	return 1
 }
 
 func oraA(e *Emulator) uint16 {
-	e.orAccumulator(e.registers.A)
+	e.orAccumulator(e.reg.A)
 	return 1
 }
 
 func oraM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.orAccumulator(e.memory[offset])
+	e.orAccumulator(e.mem[offset])
 	return 1
 }
 
 func ori(e *Emulator) uint16 {
-	e.orAccumulator(e.memory[e.pc+1])
+	e.orAccumulator(e.mem[e.pc+1])
 	return 2
 }
 
 func xraB(e *Emulator) uint16 {
-	e.xorAccumulator(e.registers.B)
+	e.xorAccumulator(e.reg.B)
 	return 1
 }
 
 func xraC(e *Emulator) uint16 {
-	e.xorAccumulator(e.registers.C)
+	e.xorAccumulator(e.reg.C)
 	return 1
 }
 
 func xraD(e *Emulator) uint16 {
-	e.xorAccumulator(e.registers.D)
+	e.xorAccumulator(e.reg.D)
 	return 1
 }
 
 func xraE(e *Emulator) uint16 {
-	e.xorAccumulator(e.registers.E)
+	e.xorAccumulator(e.reg.E)
 	return 1
 }
 
 func xraH(e *Emulator) uint16 {
-	e.xorAccumulator(e.registers.H)
+	e.xorAccumulator(e.reg.H)
 	return 1
 }
 
 func xraL(e *Emulator) uint16 {
-	e.xorAccumulator(e.registers.L)
+	e.xorAccumulator(e.reg.L)
 	return 1
 }
 
 func xraA(e *Emulator) uint16 {
-	e.xorAccumulator(e.registers.A)
+	e.xorAccumulator(e.reg.A)
 	return 1
 }
 
 func xraM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.xorAccumulator(e.memory[offset])
+	e.xorAccumulator(e.mem[offset])
 	return 1
 }
 
 func xri(e *Emulator) uint16 {
-	e.xorAccumulator(e.memory[e.pc+1])
+	e.xorAccumulator(e.mem[e.pc+1])
 	return 2
 }
 
 func cmpB(e *Emulator) uint16 {
-	e.compareAccumulator(e.registers.B)
+	e.compareAccumulator(e.reg.B)
 	return 1
 }
 
 func cmpC(e *Emulator) uint16 {
-	e.compareAccumulator(e.registers.C)
+	e.compareAccumulator(e.reg.C)
 	return 1
 }
 
 func cmpD(e *Emulator) uint16 {
-	e.compareAccumulator(e.registers.D)
+	e.compareAccumulator(e.reg.D)
 	return 1
 }
 
 func cmpE(e *Emulator) uint16 {
-	e.compareAccumulator(e.registers.E)
+	e.compareAccumulator(e.reg.E)
 	return 1
 }
 
 func cmpH(e *Emulator) uint16 {
-	e.compareAccumulator(e.registers.H)
+	e.compareAccumulator(e.reg.H)
 	return 1
 }
 
 func cmpL(e *Emulator) uint16 {
-	e.compareAccumulator(e.registers.L)
+	e.compareAccumulator(e.reg.L)
 	return 1
 }
 
 func cmpA(e *Emulator) uint16 {
-	e.compareAccumulator(e.registers.A)
+	e.compareAccumulator(e.reg.A)
 	return 1
 }
 
 func cmpM(e *Emulator) uint16 {
 	offset := e.getHL()
-	e.compareAccumulator(e.memory[offset])
+	e.compareAccumulator(e.mem[offset])
 	return 1
 }
 
 func cpi(e *Emulator) uint16 {
-	e.compareAccumulator(e.memory[e.pc+1])
+	e.compareAccumulator(e.mem[e.pc+1])
 	return 2
 }
 
@@ -1460,58 +1449,58 @@ func di(e *Emulator) uint16 {
 }
 
 func pushB(e *Emulator) uint16 {
-	e.memory[e.sp-1] = e.registers.B
-	e.memory[e.sp-2] = e.registers.C
+	e.mem[e.sp-1] = e.reg.B
+	e.mem[e.sp-2] = e.reg.C
 	e.sp -= 2
 	return 1
 }
 
 func pushD(e *Emulator) uint16 {
-	e.memory[e.sp-1] = e.registers.D
-	e.memory[e.sp-2] = e.registers.E
+	e.mem[e.sp-1] = e.reg.D
+	e.mem[e.sp-2] = e.reg.E
 	e.sp -= 2
 	return 1
 }
 
 func pushH(e *Emulator) uint16 {
-	e.memory[e.sp-1] = e.registers.H
-	e.memory[e.sp-2] = e.registers.L
+	e.mem[e.sp-1] = e.reg.H
+	e.mem[e.sp-2] = e.reg.L
 	e.sp -= 2
 	return 1
 }
 
 func pushPSW(e *Emulator) uint16 {
-	e.memory[e.sp-1] = e.registers.A
+	e.mem[e.sp-1] = e.reg.A
 	psw := (e.flags.Z | (e.flags.S << 1) | (e.flags.P << 2) | (e.flags.CY << 3) | (e.flags.AC << 4))
-	e.memory[e.sp-2] = psw
+	e.mem[e.sp-2] = psw
 	e.sp -= 2
 	return 1
 }
 
 func popB(e *Emulator) uint16 {
-	e.registers.C = e.memory[e.sp]
-	e.registers.B = e.memory[e.sp+1]
+	e.reg.C = e.mem[e.sp]
+	e.reg.B = e.mem[e.sp+1]
 	e.sp += 2
 	return 1
 }
 
 func popD(e *Emulator) uint16 {
-	e.registers.E = e.memory[e.sp]
-	e.registers.D = e.memory[e.sp+1]
+	e.reg.E = e.mem[e.sp]
+	e.reg.D = e.mem[e.sp+1]
 	e.sp += 2
 	return 1
 }
 
 func popH(e *Emulator) uint16 {
-	e.registers.L = e.memory[e.sp]
-	e.registers.H = e.memory[e.sp+1]
+	e.reg.L = e.mem[e.sp]
+	e.reg.H = e.mem[e.sp+1]
 	e.sp += 2
 	return 1
 }
 
 func popPSW(e *Emulator) uint16 {
-	e.registers.A = e.memory[e.sp+1]
-	psw := e.memory[e.sp]
+	e.reg.A = e.mem[e.sp+1]
+	psw := e.mem[e.sp]
 	if (psw & 0x01) == 0x01 {
 		e.flags.Z = 1
 	} else {
@@ -1537,46 +1526,44 @@ func popPSW(e *Emulator) uint16 {
 	} else {
 		e.flags.AC = 0
 	}
-	e.memory[e.sp-2] = psw
+	e.mem[e.sp-2] = psw
 	e.sp += 2
 	return 1
 }
 
 func lhld(e *Emulator) uint16 {
-	addr := (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
-	e.registers.L = e.memory[addr]
-	e.registers.H = e.memory[addr+1]
+	e.reg.L = e.mem[e.getNextTwoBytes()]
+	e.reg.H = e.mem[e.getNextTwoBytes()+1]
 	return 3
 }
 
 func shld(e *Emulator) uint16 {
-	addr := (uint16(e.memory[e.pc+2]) << 8) | uint16(e.memory[e.pc+1])
-	e.memory[addr] = e.registers.L
-	e.memory[addr+1] = e.registers.H
+	e.mem[e.getNextTwoBytes()] = e.reg.L
+	e.mem[e.getNextTwoBytes()+1] = e.reg.H
 	return 3
 }
 
 func xchg(e *Emulator) uint16 {
-	H := e.registers.H
-	D := e.registers.D
-	L := e.registers.L
-	E := e.registers.E
-	e.registers.D = H
-	e.registers.H = D
-	e.registers.L = E
-	e.registers.E = L
+	H := e.reg.H
+	D := e.reg.D
+	L := e.reg.L
+	E := e.reg.E
+	e.reg.D = H
+	e.reg.H = D
+	e.reg.L = E
+	e.reg.E = L
 	return 1
 }
 
 func xthl(e *Emulator) uint16 {
-	H := e.registers.H
-	L := e.registers.L
-	sp1 := e.memory[e.sp]
-	sp2 := e.memory[e.sp+1]
-	e.memory[e.sp] = L
-	e.memory[e.sp+1] = H
-	e.registers.H = sp2
-	e.registers.L = sp1
+	H := e.reg.H
+	L := e.reg.L
+	sp1 := e.mem[e.sp]
+	sp2 := e.mem[e.sp+1]
+	e.mem[e.sp] = L
+	e.mem[e.sp+1] = H
+	e.reg.H = sp2
+	e.reg.L = sp1
 	return 1
 }
 
@@ -1591,28 +1578,28 @@ func pchl(e *Emulator) uint16 {
 }
 
 func rlc(e *Emulator) uint16 {
-	e.flags.CY = e.registers.A >> 7
-	e.registers.A = (e.registers.A << 1) | e.flags.CY
+	e.flags.CY = e.reg.A >> 7
+	e.reg.A = (e.reg.A << 1) | e.flags.CY
 	return 1
 }
 
 func rrc(e *Emulator) uint16 {
-	e.flags.CY = e.registers.A & 1
-	e.registers.A = (e.registers.A >> 1) | (e.flags.CY << 7)
+	e.flags.CY = e.reg.A & 1
+	e.reg.A = (e.reg.A >> 1) | (e.flags.CY << 7)
 	return 1
 }
 
 func ral(e *Emulator) uint16 {
 	cy := e.flags.CY
-	e.flags.CY = e.registers.A >> 7
-	e.registers.A = (e.registers.A << 1) | cy
+	e.flags.CY = e.reg.A >> 7
+	e.reg.A = (e.reg.A << 1) | cy
 	return 1
 }
 
 func rar(e *Emulator) uint16 {
 	cy := e.flags.CY
-	e.flags.CY = e.registers.A & 1
-	e.registers.A = (e.registers.A >> 1) | (cy << 7)
+	e.flags.CY = e.reg.A & 1
+	e.reg.A = (e.reg.A >> 1) | (cy << 7)
 	return 1
 }
 
@@ -1627,6 +1614,6 @@ func cmc(e *Emulator) uint16 {
 }
 
 func cma(e *Emulator) uint16 {
-	e.registers.A ^= 255
+	e.reg.A ^= 255
 	return 1
 }

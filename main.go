@@ -6,11 +6,12 @@ import (
 
 var (
 	FILENAME = "roms/TST8080.COM"
+	PC       = uint16(0x100)
 )
 
 func main() {
-	emu := i8080.NewEmulator()
-	emu.LoadRom(FILENAME, 0x100)
+	emu := i8080.NewEmulator(PC)
+	emu.LoadRom(FILENAME, PC)
 	//emu.LoadRom(FILENAME, 0x0)
 	running := true
 	count := 0
