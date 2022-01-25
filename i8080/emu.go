@@ -29,6 +29,9 @@ func (e *Emulator) LoadRom(filename string, offset uint16) {
 
 	// CPU DIAg
 	e.memory[0x7] = 0xc9
+	e.memory[0x59c] = 0xc3 //JMP
+	e.memory[0x59d] = 0xc2
+	e.memory[0x59e] = 0x05
 }
 
 func (e *Emulator) getBC() uint16 {
@@ -237,10 +240,10 @@ func (e *Emulator) Execute(count int) bool {
 				str = e.memory[offset]
 			}
 		} else if e.registers.C == 2 {
-			//fmt.Printf("%c", e.registers.E)
+			fmt.Printf("%c", e.registers.E)
 		}
 	} else if e.pc == 0 {
-		//fmt.Printf("\n\n%x", e.memory[275])
+		fmt.Printf("\n\n%x", e.memory[275])
 		return false
 	}
 	return true
@@ -1577,13 +1580,53 @@ func xthl(e *Emulator) uint16 {
 	return 1
 }
 
+func sphl(e *Emulator) uint16 {
+	e.sp = e.getHL()
+	return 1
+}
+
+func pchl(e *Emulator) uint16 {
+	e.pc = e.getHL()
+	return 0
+}
+
+func rlc(e *Emulator) uint16 {
+	e.flags.CY = e.registers.A >> 7
+	e.registers.A = (e.registers.A << 1) | e.flags.CY
+	return 1
+}
+
 func rrc(e *Emulator) uint16 {
-	a := e.registers.A
-	e.registers.A = ((a & 1) << 7) | (a >> 1)
-	if (a & 1) == 1 {
-		e.flags.CY = 1
-	} else {
-		e.flags.CY = 0
-	}
+	e.flags.CY = e.registers.A & 1
+	e.registers.A = (e.registers.A >> 1) | (e.flags.CY << 7)
+	return 1
+}
+
+func ral(e *Emulator) uint16 {
+	cy := e.flags.CY
+	e.flags.CY = e.registers.A >> 7
+	e.registers.A = (e.registers.A << 1) | cy
+	return 1
+}
+
+func rar(e *Emulator) uint16 {
+	cy := e.flags.CY
+	e.flags.CY = e.registers.A & 1
+	e.registers.A = (e.registers.A >> 1) | (cy << 7)
+	return 1
+}
+
+func stc(e *Emulator) uint16 {
+	e.flags.CY = 1
+	return 1
+}
+
+func cmc(e *Emulator) uint16 {
+	e.flags.CY ^= 1
+	return 1
+}
+
+func cma(e *Emulator) uint16 {
+	e.registers.A ^= 255
 	return 1
 }
