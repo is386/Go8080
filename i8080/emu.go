@@ -29,9 +29,6 @@ func (e *Emulator) LoadRom(filename string, offset uint16) {
 
 	// CPU DIAg
 	e.mem[0x7] = 0xc9
-	e.mem[0x59c] = 0xc3 //JMP
-	e.mem[0x59d] = 0xc2
-	e.mem[0x59e] = 0x05
 }
 
 func (e *Emulator) fetch() uint8 {
@@ -44,16 +41,22 @@ func (e *Emulator) decode(opcode uint8) func(*Emulator) uint16 {
 
 func (e *Emulator) Execute(count int) bool {
 	opcode := e.fetch()
-	// fmt.Printf("\nPC:%04x OP:%02x SP:%04x BC:%04x DE:%04x HL:%04x A:%02x Cy:%d AC:%d S:%d Z:%d P:%d",
-	// 	e.pc, opcode, e.sp, e.getBC(), e.getDE(), e.getHL(), e.reg.A, e.flags.CY, e.flags.AC,
-	// 	e.flags.S, e.flags.Z, e.flags.P)
 	instr := e.decode(opcode)
 	steps := instr(e)
+	e.pc += steps
+	return e.showDebug(opcode, steps)
+}
+
+func (e *Emulator) showDebug(opcode uint8, steps uint16) bool {
+	fmt.Printf("\nPC:%04x OP:%02x SP:%04x BC:%04x DE:%04x HL:%04x A:%02x Cy:%d AC:%d S:%d Z:%d P:%d",
+		e.pc-steps, opcode, e.sp, e.getBC(), e.getDE(), e.getHL(), e.reg.A, e.flags.CY, e.flags.AC,
+		e.flags.S, e.flags.Z, e.flags.P)
+
 	if steps == 5 {
 		fmt.Printf("unimplemented instruction: %x\n", opcode)
 		return false
 	}
-	e.pc += steps
+
 	if e.pc == 5 {
 		if e.reg.C == 9 {
 			fmt.Println()
@@ -70,6 +73,7 @@ func (e *Emulator) Execute(count int) bool {
 	} else if e.pc == 0 {
 		return false
 	}
+
 	return true
 }
 
