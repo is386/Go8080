@@ -54,16 +54,17 @@ func (e *Emulator) showDebug(opcode uint8) bool {
 	// 	e.pc, opcode, e.sp, e.getBC(), e.getDE(), e.getHL(), e.reg.A, e.flags.CY, e.flags.AC,
 	// 	e.flags.S, e.flags.Z, e.flags.P)
 	// PC: 0100, AF: 0002, BC: 0000, DE: 0000, HL: 0000, SP: 0000, CYC: 0	(3E 01 FE 02)
-	f := uint8(0)
-	f |= e.flags.S << 7
-	f |= e.flags.Z << 6
-	f |= e.flags.AC << 4
-	f |= e.flags.P << 2
-	f |= 1 << 1
-	f |= e.flags.CY << 0
+	// f := uint8(0)
+	// f |= e.flags.S << 7
+	// f |= e.flags.Z << 6
+	// f |= e.flags.AC << 4
+	// f |= e.flags.P << 2
+	// f |= 1 << 1
+	// f |= e.flags.CY << 0
 
-	fmt.Printf("\nPC: %04X, AF: %04X, BC: %04X, DE: %04X, HL: %04X, SP: %04X (%02X %02X %02X %02X)",
-		e.pc, uint16(e.reg.A)<<8|uint16(f), e.getBC(), e.getDE(), e.getHL(), e.sp, opcode, e.mem[e.pc+1], e.mem[e.pc+2], e.mem[e.pc+3])
+	// fmt.Printf("\nPC: %04X, AF: %04X, BC: %04X, DE: %04X, HL: %04X, SP: %04X (%02X %02X %02X %02X)",
+	// 	e.pc, uint16(e.reg.A)<<8|uint16(f), e.getBC(), e.getDE(), e.getHL(), e.sp, opcode,
+	// 	e.mem[e.pc+1], e.mem[e.pc+2], e.mem[e.pc+3])
 	if e.pc == 5 {
 		if e.reg.C == 9 {
 			fmt.Println()
@@ -1528,7 +1529,6 @@ func popPSW(e *Emulator) uint16 {
 	} else {
 		e.flags.AC = 0
 	}
-	e.mem[e.sp-2] = psw
 	e.sp += 2
 	return 1
 }
