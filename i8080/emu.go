@@ -50,9 +50,20 @@ func (e *Emulator) Execute() bool {
 }
 
 func (e *Emulator) showDebug(opcode uint8) bool {
-	// fmt.Printf("\nPC:%04x OP:%02x SP:%04x BC:%04x DE:%04x HL:%04x A:%02x Cy:%dAC:%d S:%d Z:%d P:%d",
+	// fmt.Printf("\nPC:%04X OP:%02X SP:%04X BC:%04X DE:%04X HL:%04X A:%02X Cy:%dAC:%d S:%d Z:%d P:%d",
 	// 	e.pc, opcode, e.sp, e.getBC(), e.getDE(), e.getHL(), e.reg.A, e.flags.CY, e.flags.AC,
 	// 	e.flags.S, e.flags.Z, e.flags.P)
+	// PC: 0100, AF: 0002, BC: 0000, DE: 0000, HL: 0000, SP: 0000, CYC: 0	(3E 01 FE 02)
+	f := uint8(0)
+	f |= e.flags.S << 7
+	f |= e.flags.Z << 6
+	f |= e.flags.AC << 4
+	f |= e.flags.P << 2
+	f |= 1 << 1
+	f |= e.flags.CY << 0
+
+	fmt.Printf("\nPC: %04X, AF: %04X, BC: %04X, DE: %04X, HL: %04X, SP: %04X (%02X %02X %02X %02X)",
+		e.pc, uint16(e.reg.A)<<8|uint16(f), e.getBC(), e.getDE(), e.getHL(), e.sp, opcode, e.mem[e.pc+1], e.mem[e.pc+2], e.mem[e.pc+3])
 	if e.pc == 5 {
 		if e.reg.C == 9 {
 			fmt.Println()
@@ -120,8 +131,8 @@ func (e *Emulator) setCarryDad(val uint32) {
 	}
 }
 
-func (e *Emulator) setAuxCarry(b uint8, res uint16) {
-	if (((uint16(e.reg.A) ^ res) ^ uint16(b)) & 0x10) > 0 {
+func (e *Emulator) setAuxCarry(b uint16, res uint16) {
+	if ((uint16(e.reg.A) ^ b ^ res) & 0x10) > 0 {
 		e.flags.AC = 1
 	} else {
 		e.flags.AC = 0
@@ -181,27 +192,33 @@ func (e *Emulator) setZSP(val uint8) {
 	e.setParity(uint16(val))
 }
 
+func flip(val uint8) uint8 {
+	if val == 1 {
+		return 0
+	} else {
+		return 1
+	}
+}
+
 func (e *Emulator) addToAccumulator(val uint8, cy uint8) {
 	ans := uint16(e.reg.A) + uint16(val) + uint16(cy)
 	e.setZSP(uint8(ans))
 	e.setCarryArith(ans)
-	e.setAuxCarry(val, ans)
+	e.setAuxCarry(uint16(val), ans)
 	e.reg.A = uint8(ans)
 }
 
 func (e *Emulator) subFromAccumulator(val uint8, cy uint8) {
-	ans := uint16(e.reg.A) - uint16(val) - uint16(cy)
-	e.setZSP(uint8(ans))
-	e.setCarryArith(ans)
-	e.setAuxCarry(val, ans)
-	e.reg.A = uint8(ans)
+	cy = flip(cy)
+	e.addToAccumulator(^val, cy)
+	e.flags.CY = flip(e.flags.CY)
 }
 
 func (e *Emulator) andAccumulator(val uint8) {
 	ans := uint16(e.reg.A & val)
 	e.setZSP(uint8(ans))
 	e.flags.CY = 0
-	if ((e.reg.A | val) & 0x08) != 0 {
+	if ((e.reg.A | val) & 0x08) > 0 {
 		e.flags.AC = 1
 	} else {
 		e.flags.AC = 0
@@ -214,7 +231,7 @@ func (e *Emulator) xorAccumulator(val uint8) {
 	e.setZSP(uint8(ans))
 	e.flags.CY = 0
 	e.flags.AC = 0
-	e.reg.A = uint8(ans & 0xff)
+	e.reg.A = uint8(ans)
 }
 
 func (e *Emulator) orAccumulator(val uint8) {
@@ -229,16 +246,10 @@ func (e *Emulator) compareAccumulator(val uint8) {
 	ans := uint16(e.reg.A) - uint16(val)
 	e.setZSP(uint8(ans))
 	e.setCarryArith(ans)
-	ac := uint16(e.reg.A) ^ ans ^ uint16(val)
-	if ac == 1 {
-		ac = 0
-	} else {
-		ac = 1
-	}
-	if (ac & 0x10) == 1 {
-		e.flags.AC = 0
-	} else {
+	if (^(uint16(e.reg.A) ^ ans ^ uint16(val)) & 0x10) > 0 {
 		e.flags.AC = 1
+	} else {
+		e.flags.AC = 0
 	}
 }
 
