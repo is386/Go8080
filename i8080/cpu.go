@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 )
 
-// TODO: reorder instrs
 // TODO: move out debugging stuff
 
 var (
@@ -29,20 +28,13 @@ var (
 )
 
 type CPU struct {
-	mem        [64 * 1024]uint8
-	reg        *Registers
-	flags      *Flags
-	pc         uint16
-	sp         uint16
-	cyc        int
-	intPending bool
-	intVector  uint8
-	intDelay   uint8
-	halt       bool
-	showDebug  bool
-	isTest     bool
-	portIn     func()
-	portOut    func()
+	mem                     [64 * 1024]uint8
+	reg                     *Registers
+	flags                   *Flags
+	pc, sp                  uint16
+	cyc                     int
+	halt, showDebug, isTest bool
+	portIn, portOut         func()
 }
 
 func NewCPU(pcStart uint16, showDebug bool, isTest bool, portIn func(), portOut func()) *CPU {
@@ -169,10 +161,6 @@ func (c *CPU) testOutput() bool {
 		return false
 	}
 	return true
-}
-
-func (c *CPU) interrupt(opcode uint8) {
-	c.intPending = true
 }
 
 func (c *CPU) setZSP(val uint8) {
@@ -325,9 +313,425 @@ func (c *CPU) pop() uint16 {
 	return ((uint16(c.read(c.sp-1)) << 8) | uint16(c.read(c.sp-2)))
 }
 
-func noOp(c *CPU) uint16 {
+// Data Transfer Group
+
+func movBB(c *CPU) uint16 {
 	return 1
 }
+
+func movBC(c *CPU) uint16 {
+	c.reg.B = c.reg.C
+	return 1
+}
+
+func movBD(c *CPU) uint16 {
+	c.reg.B = c.reg.D
+	return 1
+}
+
+func movBE(c *CPU) uint16 {
+	c.reg.B = c.reg.E
+	return 1
+}
+
+func movBH(c *CPU) uint16 {
+	c.reg.B = c.reg.H
+	return 1
+}
+
+func movBL(c *CPU) uint16 {
+	c.reg.B = c.reg.L
+	return 1
+}
+
+func movBM(c *CPU) uint16 {
+	c.reg.B = c.read(c.getHL())
+	return 1
+}
+
+func movBA(c *CPU) uint16 {
+	c.reg.B = c.reg.A
+	return 1
+}
+
+func movCB(c *CPU) uint16 {
+	c.reg.C = c.reg.B
+	return 1
+}
+
+func movCC(c *CPU) uint16 {
+	return 1
+}
+
+func movCD(c *CPU) uint16 {
+	c.reg.C = c.reg.D
+	return 1
+}
+
+func movCE(c *CPU) uint16 {
+	c.reg.C = c.reg.E
+	return 1
+}
+
+func movCH(c *CPU) uint16 {
+	c.reg.C = c.reg.H
+	return 1
+}
+
+func movCL(c *CPU) uint16 {
+	c.reg.C = c.reg.L
+	return 1
+}
+
+func movCM(c *CPU) uint16 {
+	c.reg.C = c.read(c.getHL())
+	return 1
+}
+
+func movCA(c *CPU) uint16 {
+	c.reg.C = c.reg.A
+	return 1
+}
+
+func movDB(c *CPU) uint16 {
+	c.reg.D = c.reg.B
+	return 1
+}
+
+func movDC(c *CPU) uint16 {
+	c.reg.D = c.reg.C
+	return 1
+}
+
+func movDD(c *CPU) uint16 {
+	return 1
+}
+
+func movDE(c *CPU) uint16 {
+	c.reg.D = c.reg.E
+	return 1
+}
+
+func movDH(c *CPU) uint16 {
+	c.reg.D = c.reg.H
+	return 1
+}
+
+func movDL(c *CPU) uint16 {
+	c.reg.D = c.reg.L
+	return 1
+}
+
+func movDM(c *CPU) uint16 {
+	c.reg.D = c.read(c.getHL())
+	return 1
+}
+
+func movDA(c *CPU) uint16 {
+	c.reg.D = c.reg.A
+	return 1
+}
+
+func movEB(c *CPU) uint16 {
+	c.reg.E = c.reg.B
+	return 1
+}
+
+func movEC(c *CPU) uint16 {
+	c.reg.E = c.reg.C
+	return 1
+}
+
+func movED(c *CPU) uint16 {
+	c.reg.E = c.reg.D
+	return 1
+}
+
+func movEE(c *CPU) uint16 {
+	return 1
+}
+
+func movEH(c *CPU) uint16 {
+	c.reg.E = c.reg.H
+	return 1
+}
+
+func movEL(c *CPU) uint16 {
+	c.reg.E = c.reg.L
+	return 1
+}
+
+func movEM(c *CPU) uint16 {
+	c.reg.E = c.read(c.getHL())
+	return 1
+}
+
+func movEA(c *CPU) uint16 {
+	c.reg.E = c.reg.A
+	return 1
+}
+
+func movHB(c *CPU) uint16 {
+	c.reg.H = c.reg.B
+	return 1
+}
+
+func movHC(c *CPU) uint16 {
+	c.reg.H = c.reg.C
+	return 1
+}
+
+func movHD(c *CPU) uint16 {
+	c.reg.H = c.reg.D
+	return 1
+}
+
+func movHE(c *CPU) uint16 {
+	c.reg.H = c.reg.E
+	return 1
+}
+
+func movHH(c *CPU) uint16 {
+	return 1
+}
+
+func movHL(c *CPU) uint16 {
+	c.reg.H = c.reg.L
+	return 1
+}
+
+func movHM(c *CPU) uint16 {
+	c.reg.H = c.read(c.getHL())
+	return 1
+}
+
+func movHA(c *CPU) uint16 {
+	c.reg.H = c.reg.A
+	return 1
+}
+
+func movLB(c *CPU) uint16 {
+	c.reg.L = c.reg.B
+	return 1
+}
+
+func movLC(c *CPU) uint16 {
+	c.reg.L = c.reg.C
+	return 1
+}
+
+func movLD(c *CPU) uint16 {
+	c.reg.L = c.reg.D
+	return 1
+}
+
+func movLE(c *CPU) uint16 {
+	c.reg.L = c.reg.E
+	return 1
+}
+
+func movLH(c *CPU) uint16 {
+	c.reg.L = c.reg.H
+	return 1
+}
+
+func movLL(c *CPU) uint16 {
+	return 1
+}
+
+func movLM(c *CPU) uint16 {
+	c.reg.L = c.read(c.getHL())
+	return 1
+}
+
+func movLA(c *CPU) uint16 {
+	c.reg.L = c.reg.A
+	return 1
+}
+
+func movAB(c *CPU) uint16 {
+	c.reg.A = c.reg.B
+	return 1
+}
+
+func movAC(c *CPU) uint16 {
+	c.reg.A = c.reg.C
+	return 1
+}
+
+func movAD(c *CPU) uint16 {
+	c.reg.A = c.reg.D
+	return 1
+}
+
+func movAE(c *CPU) uint16 {
+	c.reg.A = c.reg.E
+	return 1
+}
+
+func movAH(c *CPU) uint16 {
+	c.reg.A = c.reg.H
+	return 1
+}
+
+func movAL(c *CPU) uint16 {
+	c.reg.A = c.reg.L
+	return 1
+}
+
+func movAM(c *CPU) uint16 {
+	c.reg.A = c.read(c.getHL())
+	return 1
+}
+
+func movAA(c *CPU) uint16 {
+	return 1
+}
+
+func movMB(c *CPU) uint16 {
+	c.write(c.getHL(), c.reg.B)
+	return 1
+}
+
+func movMC(c *CPU) uint16 {
+	c.write(c.getHL(), c.reg.C)
+	return 1
+}
+
+func movMD(c *CPU) uint16 {
+	c.write(c.getHL(), c.reg.D)
+	return 1
+}
+
+func movME(c *CPU) uint16 {
+	c.write(c.getHL(), c.reg.E)
+	return 1
+}
+
+func movMH(c *CPU) uint16 {
+	c.write(c.getHL(), c.reg.H)
+	return 1
+}
+
+func movML(c *CPU) uint16 {
+	c.write(c.getHL(), c.reg.L)
+	return 1
+}
+
+func movMA(c *CPU) uint16 {
+	c.write(c.getHL(), c.reg.A)
+	return 1
+}
+
+func mviB(c *CPU) uint16 {
+	c.reg.B = c.getNextByte()
+	return 2
+}
+
+func mviC(c *CPU) uint16 {
+	c.reg.C = c.getNextByte()
+	return 2
+}
+
+func mviD(c *CPU) uint16 {
+	c.reg.D = c.getNextByte()
+	return 2
+}
+
+func mviE(c *CPU) uint16 {
+	c.reg.E = c.getNextByte()
+	return 2
+}
+
+func mviH(c *CPU) uint16 {
+	c.reg.H = c.getNextByte()
+	return 2
+}
+
+func mviL(c *CPU) uint16 {
+	c.reg.L = c.getNextByte()
+	return 2
+}
+
+func mviA(c *CPU) uint16 {
+	c.reg.A = c.getNextByte()
+	return 2
+}
+
+func mviM(c *CPU) uint16 {
+	c.write(c.getHL(), c.getNextByte())
+	return 2
+}
+
+func lxiB(c *CPU) uint16 {
+	c.setBC(c.getNextTwoBytes())
+	return 3
+}
+
+func lxiD(c *CPU) uint16 {
+	c.setDE(c.getNextTwoBytes())
+	return 3
+}
+
+func lxiH(c *CPU) uint16 {
+	c.setHL(c.getNextTwoBytes())
+	return 3
+}
+
+func lxiSP(c *CPU) uint16 {
+	c.sp = c.getNextTwoBytes()
+	return 3
+}
+
+func lda(c *CPU) uint16 {
+	c.reg.A = c.mem[c.getNextTwoBytes()]
+	return 3
+}
+
+func sta(c *CPU) uint16 {
+	c.write(c.getNextTwoBytes(), c.reg.A)
+	return 3
+}
+
+func lhld(c *CPU) uint16 {
+	c.reg.L = c.read(c.getNextTwoBytes())
+	c.reg.H = c.read(c.getNextTwoBytes() + 1)
+	return 3
+}
+
+func shld(c *CPU) uint16 {
+	c.write(c.getNextTwoBytes(), c.reg.L)
+	c.write(c.getNextTwoBytes()+1, c.reg.H)
+	return 3
+}
+
+func ldaxB(c *CPU) uint16 {
+	c.reg.A = c.read(c.getBC())
+	return 1
+}
+
+func ldaxD(c *CPU) uint16 {
+	c.reg.A = c.read(c.getDE())
+	return 1
+}
+
+func staxB(c *CPU) uint16 {
+	c.write(c.getBC(), c.reg.A)
+	return 1
+}
+
+func staxD(c *CPU) uint16 {
+	c.write(c.getDE(), c.reg.A)
+	return 1
+}
+
+func xchg(c *CPU) uint16 {
+	c.reg.H, c.reg.D = c.reg.D, c.reg.H
+	c.reg.L, c.reg.E = c.reg.E, c.reg.L
+	return 1
+}
+
+// Arithmetic Group
 
 func addB(c *CPU) uint16 {
 	c.add(c.reg.B, 0)
@@ -669,548 +1073,7 @@ func daa(c *CPU) uint16 {
 	return 1
 }
 
-func jmp(c *CPU) uint16 {
-	c.pc = c.getNextTwoBytes()
-	return 0
-}
-
-func jmpCond(c *CPU, cond bool) uint16 {
-	if cond {
-		return jmp(c)
-	}
-	return 3
-}
-
-func jnz(c *CPU) uint16 {
-	return jmpCond(c, c.flags.Z == 0)
-}
-
-func jz(c *CPU) uint16 {
-	return jmpCond(c, c.flags.Z == 1)
-}
-
-func jnc(c *CPU) uint16 {
-	return jmpCond(c, c.flags.CY == 0)
-}
-
-func jc(c *CPU) uint16 {
-	return jmpCond(c, c.flags.CY == 1)
-}
-
-func jpo(c *CPU) uint16 {
-	return jmpCond(c, c.flags.P == 0)
-}
-
-func jpe(c *CPU) uint16 {
-	return jmpCond(c, c.flags.P == 1)
-}
-
-func jp(c *CPU) uint16 {
-	return jmpCond(c, c.flags.S == 0)
-}
-
-func jm(c *CPU) uint16 {
-	return jmpCond(c, c.flags.S == 1)
-}
-
-func ret(c *CPU) uint16 {
-	c.pc = (uint16(c.mem[c.sp]) | (uint16(c.mem[c.sp+1]) << 8))
-	c.sp += 2
-	return 1
-}
-
-func retCond(c *CPU, cond bool) uint16 {
-	if cond {
-		c.cyc += 6
-		return ret(c)
-	}
-	return 1
-}
-
-func rnz(c *CPU) uint16 {
-	return retCond(c, c.flags.Z == 0)
-}
-
-func rz(c *CPU) uint16 {
-	return retCond(c, c.flags.Z == 1)
-}
-
-func rnc(c *CPU) uint16 {
-	return retCond(c, c.flags.CY == 0)
-}
-
-func rc(c *CPU) uint16 {
-	return retCond(c, c.flags.CY == 1)
-}
-
-func rpo(c *CPU) uint16 {
-	return retCond(c, c.flags.P == 0)
-}
-
-func rpe(c *CPU) uint16 {
-	return retCond(c, c.flags.P == 1)
-}
-
-func rp(c *CPU) uint16 {
-	return retCond(c, c.flags.S == 0)
-}
-
-func rm(c *CPU) uint16 {
-	return retCond(c, c.flags.S == 1)
-}
-
-func mviB(c *CPU) uint16 {
-	c.reg.B = c.getNextByte()
-	return 2
-}
-
-func mviC(c *CPU) uint16 {
-	c.reg.C = c.getNextByte()
-	return 2
-}
-
-func mviD(c *CPU) uint16 {
-	c.reg.D = c.getNextByte()
-	return 2
-}
-
-func mviE(c *CPU) uint16 {
-	c.reg.E = c.getNextByte()
-	return 2
-}
-
-func mviH(c *CPU) uint16 {
-	c.reg.H = c.getNextByte()
-	return 2
-}
-
-func mviL(c *CPU) uint16 {
-	c.reg.L = c.getNextByte()
-	return 2
-}
-
-func mviA(c *CPU) uint16 {
-	c.reg.A = c.getNextByte()
-	return 2
-}
-
-func mviM(c *CPU) uint16 {
-	c.write(c.getHL(), c.getNextByte())
-	return 2
-}
-
-func call(c *CPU) uint16 {
-	ret := c.pc + 2
-	c.mem[c.sp-1] = uint8(ret>>8) & uint8(0xff)
-	c.mem[c.sp-2] = uint8(ret) & uint8(0xff)
-	c.sp = c.sp - 2
-	c.pc = c.getNextTwoBytes()
-	return 0
-}
-
-func callRst(c *CPU, addr uint16) uint16 {
-	call(c)
-	c.pc = addr
-	return 0
-}
-
-func callCond(c *CPU, cond bool) uint16 {
-	if cond {
-		c.cyc += 6
-		return call(c)
-	}
-	return 3
-}
-
-func cnz(c *CPU) uint16 {
-	return callCond(c, c.flags.Z == 0)
-}
-
-func cz(c *CPU) uint16 {
-	return callCond(c, c.flags.Z == 1)
-}
-
-func cnc(c *CPU) uint16 {
-	return callCond(c, c.flags.CY == 0)
-}
-
-func cc(c *CPU) uint16 {
-	return callCond(c, c.flags.CY == 1)
-}
-
-func cpo(c *CPU) uint16 {
-	return callCond(c, c.flags.P == 0)
-}
-
-func cpe(c *CPU) uint16 {
-	return callCond(c, c.flags.P == 1)
-}
-
-func cp(c *CPU) uint16 {
-	return callCond(c, c.flags.S == 0)
-}
-
-func cm(c *CPU) uint16 {
-	return callCond(c, c.flags.S == 1)
-}
-
-func lxiB(c *CPU) uint16 {
-	c.setBC(c.getNextTwoBytes())
-	return 3
-}
-
-func lxiD(c *CPU) uint16 {
-	c.setDE(c.getNextTwoBytes())
-	return 3
-}
-
-func lxiH(c *CPU) uint16 {
-	c.setHL(c.getNextTwoBytes())
-	return 3
-}
-
-func lxiSP(c *CPU) uint16 {
-	c.sp = c.getNextTwoBytes()
-	return 3
-}
-
-func lda(c *CPU) uint16 {
-	c.reg.A = c.mem[c.getNextTwoBytes()]
-	return 3
-}
-
-func ldaxB(c *CPU) uint16 {
-	c.reg.A = c.read(c.getBC())
-	return 1
-}
-
-func ldaxD(c *CPU) uint16 {
-	c.reg.A = c.read(c.getDE())
-	return 1
-}
-
-func movBB(c *CPU) uint16 {
-	return 1
-}
-
-func movBC(c *CPU) uint16 {
-	c.reg.B = c.reg.C
-	return 1
-}
-
-func movBD(c *CPU) uint16 {
-	c.reg.B = c.reg.D
-	return 1
-}
-
-func movBE(c *CPU) uint16 {
-	c.reg.B = c.reg.E
-	return 1
-}
-
-func movBH(c *CPU) uint16 {
-	c.reg.B = c.reg.H
-	return 1
-}
-
-func movBL(c *CPU) uint16 {
-	c.reg.B = c.reg.L
-	return 1
-}
-
-func movBM(c *CPU) uint16 {
-	c.reg.B = c.read(c.getHL())
-	return 1
-}
-
-func movBA(c *CPU) uint16 {
-	c.reg.B = c.reg.A
-	return 1
-}
-
-func movCB(c *CPU) uint16 {
-	c.reg.C = c.reg.B
-	return 1
-}
-
-func movCC(c *CPU) uint16 {
-	return 1
-}
-
-func movCD(c *CPU) uint16 {
-	c.reg.C = c.reg.D
-	return 1
-}
-
-func movCE(c *CPU) uint16 {
-	c.reg.C = c.reg.E
-	return 1
-}
-
-func movCH(c *CPU) uint16 {
-	c.reg.C = c.reg.H
-	return 1
-}
-
-func movCL(c *CPU) uint16 {
-	c.reg.C = c.reg.L
-	return 1
-}
-
-func movCM(c *CPU) uint16 {
-	c.reg.C = c.read(c.getHL())
-	return 1
-}
-
-func movCA(c *CPU) uint16 {
-	c.reg.C = c.reg.A
-	return 1
-}
-
-func movDB(c *CPU) uint16 {
-	c.reg.D = c.reg.B
-	return 1
-}
-
-func movDC(c *CPU) uint16 {
-	c.reg.D = c.reg.C
-	return 1
-}
-
-func movDD(c *CPU) uint16 {
-	return 1
-}
-
-func movDE(c *CPU) uint16 {
-	c.reg.D = c.reg.E
-	return 1
-}
-
-func movDH(c *CPU) uint16 {
-	c.reg.D = c.reg.H
-	return 1
-}
-
-func movDL(c *CPU) uint16 {
-	c.reg.D = c.reg.L
-	return 1
-}
-
-func movDM(c *CPU) uint16 {
-	c.reg.D = c.read(c.getHL())
-	return 1
-}
-
-func movDA(c *CPU) uint16 {
-	c.reg.D = c.reg.A
-	return 1
-}
-
-func movEB(c *CPU) uint16 {
-	c.reg.E = c.reg.B
-	return 1
-}
-
-func movEC(c *CPU) uint16 {
-	c.reg.E = c.reg.C
-	return 1
-}
-
-func movED(c *CPU) uint16 {
-	c.reg.E = c.reg.D
-	return 1
-}
-
-func movEE(c *CPU) uint16 {
-	return 1
-}
-
-func movEH(c *CPU) uint16 {
-	c.reg.E = c.reg.H
-	return 1
-}
-
-func movEL(c *CPU) uint16 {
-	c.reg.E = c.reg.L
-	return 1
-}
-
-func movEM(c *CPU) uint16 {
-	c.reg.E = c.read(c.getHL())
-	return 1
-}
-
-func movEA(c *CPU) uint16 {
-	c.reg.E = c.reg.A
-	return 1
-}
-
-func movHB(c *CPU) uint16 {
-	c.reg.H = c.reg.B
-	return 1
-}
-
-func movHC(c *CPU) uint16 {
-	c.reg.H = c.reg.C
-	return 1
-}
-
-func movHD(c *CPU) uint16 {
-	c.reg.H = c.reg.D
-	return 1
-}
-
-func movHE(c *CPU) uint16 {
-	c.reg.H = c.reg.E
-	return 1
-}
-
-func movHH(c *CPU) uint16 {
-	return 1
-}
-
-func movHL(c *CPU) uint16 {
-	c.reg.H = c.reg.L
-	return 1
-}
-
-func movHM(c *CPU) uint16 {
-	c.reg.H = c.read(c.getHL())
-	return 1
-}
-
-func movHA(c *CPU) uint16 {
-	c.reg.H = c.reg.A
-	return 1
-}
-
-func movLB(c *CPU) uint16 {
-	c.reg.L = c.reg.B
-	return 1
-}
-
-func movLC(c *CPU) uint16 {
-	c.reg.L = c.reg.C
-	return 1
-}
-
-func movLD(c *CPU) uint16 {
-	c.reg.L = c.reg.D
-	return 1
-}
-
-func movLE(c *CPU) uint16 {
-	c.reg.L = c.reg.E
-	return 1
-}
-
-func movLH(c *CPU) uint16 {
-	c.reg.L = c.reg.H
-	return 1
-}
-
-func movLL(c *CPU) uint16 {
-	return 1
-}
-
-func movLM(c *CPU) uint16 {
-	c.reg.L = c.read(c.getHL())
-	return 1
-}
-
-func movLA(c *CPU) uint16 {
-	c.reg.L = c.reg.A
-	return 1
-}
-
-func movAB(c *CPU) uint16 {
-	c.reg.A = c.reg.B
-	return 1
-}
-
-func movAC(c *CPU) uint16 {
-	c.reg.A = c.reg.C
-	return 1
-}
-
-func movAD(c *CPU) uint16 {
-	c.reg.A = c.reg.D
-	return 1
-}
-
-func movAE(c *CPU) uint16 {
-	c.reg.A = c.reg.E
-	return 1
-}
-
-func movAH(c *CPU) uint16 {
-	c.reg.A = c.reg.H
-	return 1
-}
-
-func movAL(c *CPU) uint16 {
-	c.reg.A = c.reg.L
-	return 1
-}
-
-func movAM(c *CPU) uint16 {
-	c.reg.A = c.read(c.getHL())
-	return 1
-}
-
-func movAA(c *CPU) uint16 {
-	return 1
-}
-
-func movMB(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.B)
-	return 1
-}
-
-func movMC(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.C)
-	return 1
-}
-
-func movMD(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.D)
-	return 1
-}
-
-func movME(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.E)
-	return 1
-}
-
-func movMH(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.H)
-	return 1
-}
-
-func movML(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.L)
-	return 1
-}
-
-func movMA(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.A)
-	return 1
-}
-
-func sta(c *CPU) uint16 {
-	c.write(c.getNextTwoBytes(), c.reg.A)
-	return 3
-}
-
-func staxB(c *CPU) uint16 {
-	c.write(c.getBC(), c.reg.A)
-	return 1
-}
-
-func staxD(c *CPU) uint16 {
-	c.write(c.getDE(), c.reg.A)
-	return 1
-}
+// Logical Group
 
 func anaB(c *CPU) uint16 {
 	c.and(c.reg.B)
@@ -1392,23 +1255,240 @@ func cpi(c *CPU) uint16 {
 	return 2
 }
 
-func in(c *CPU) uint16 {
-	return 2
-}
-
-func out(c *CPU) uint16 {
-	return 2
-}
-
-func ei(c *CPU) uint16 {
-	c.intPending = true
+func rlc(c *CPU) uint16 {
+	c.flags.CY = c.reg.A >> 7
+	c.reg.A = (c.reg.A << 1) | c.flags.CY
 	return 1
 }
 
-func di(c *CPU) uint16 {
-	c.intPending = false
+func rrc(c *CPU) uint16 {
+	c.flags.CY = c.reg.A & 1
+	c.reg.A = (c.reg.A >> 1) | (c.flags.CY << 7)
 	return 1
 }
+
+func ral(c *CPU) uint16 {
+	cy := c.flags.CY
+	c.flags.CY = c.reg.A >> 7
+	c.reg.A = (c.reg.A << 1) | cy
+	return 1
+}
+
+func rar(c *CPU) uint16 {
+	cy := c.flags.CY
+	c.flags.CY = c.reg.A & 1
+	c.reg.A = (c.reg.A >> 1) | (cy << 7)
+	return 1
+}
+
+func cma(c *CPU) uint16 {
+	c.reg.A ^= 255
+	return 1
+}
+
+func cmc(c *CPU) uint16 {
+	c.flags.CY ^= 1
+	return 1
+}
+
+func stc(c *CPU) uint16 {
+	c.flags.CY = 1
+	return 1
+}
+
+// Branch Group
+
+func jmp(c *CPU) uint16 {
+	c.pc = c.getNextTwoBytes()
+	return 0
+}
+
+func jmpCond(c *CPU, cond bool) uint16 {
+	if cond {
+		return jmp(c)
+	}
+	return 3
+}
+
+func jnz(c *CPU) uint16 {
+	return jmpCond(c, c.flags.Z == 0)
+}
+
+func jz(c *CPU) uint16 {
+	return jmpCond(c, c.flags.Z == 1)
+}
+
+func jnc(c *CPU) uint16 {
+	return jmpCond(c, c.flags.CY == 0)
+}
+
+func jc(c *CPU) uint16 {
+	return jmpCond(c, c.flags.CY == 1)
+}
+
+func jpo(c *CPU) uint16 {
+	return jmpCond(c, c.flags.P == 0)
+}
+
+func jpe(c *CPU) uint16 {
+	return jmpCond(c, c.flags.P == 1)
+}
+
+func jp(c *CPU) uint16 {
+	return jmpCond(c, c.flags.S == 0)
+}
+
+func jm(c *CPU) uint16 {
+	return jmpCond(c, c.flags.S == 1)
+}
+
+func ret(c *CPU) uint16 {
+	c.pc = (uint16(c.mem[c.sp]) | (uint16(c.mem[c.sp+1]) << 8))
+	c.sp += 2
+	return 1
+}
+
+func retCond(c *CPU, cond bool) uint16 {
+	if cond {
+		c.cyc += 6
+		return ret(c)
+	}
+	return 1
+}
+
+func rnz(c *CPU) uint16 {
+	return retCond(c, c.flags.Z == 0)
+}
+
+func rz(c *CPU) uint16 {
+	return retCond(c, c.flags.Z == 1)
+}
+
+func rnc(c *CPU) uint16 {
+	return retCond(c, c.flags.CY == 0)
+}
+
+func rc(c *CPU) uint16 {
+	return retCond(c, c.flags.CY == 1)
+}
+
+func rpo(c *CPU) uint16 {
+	return retCond(c, c.flags.P == 0)
+}
+
+func rpe(c *CPU) uint16 {
+	return retCond(c, c.flags.P == 1)
+}
+
+func rp(c *CPU) uint16 {
+	return retCond(c, c.flags.S == 0)
+}
+
+func rm(c *CPU) uint16 {
+	return retCond(c, c.flags.S == 1)
+}
+
+func call(c *CPU) uint16 {
+	ret := c.pc + 2
+	c.mem[c.sp-1] = uint8(ret>>8) & uint8(0xff)
+	c.mem[c.sp-2] = uint8(ret) & uint8(0xff)
+	c.sp = c.sp - 2
+	c.pc = c.getNextTwoBytes()
+	return 0
+}
+
+func callCond(c *CPU, cond bool) uint16 {
+	if cond {
+		c.cyc += 6
+		return call(c)
+	}
+	return 3
+}
+
+func cnz(c *CPU) uint16 {
+	return callCond(c, c.flags.Z == 0)
+}
+
+func cz(c *CPU) uint16 {
+	return callCond(c, c.flags.Z == 1)
+}
+
+func cnc(c *CPU) uint16 {
+	return callCond(c, c.flags.CY == 0)
+}
+
+func cc(c *CPU) uint16 {
+	return callCond(c, c.flags.CY == 1)
+}
+
+func cpo(c *CPU) uint16 {
+	return callCond(c, c.flags.P == 0)
+}
+
+func cpe(c *CPU) uint16 {
+	return callCond(c, c.flags.P == 1)
+}
+
+func cp(c *CPU) uint16 {
+	return callCond(c, c.flags.S == 0)
+}
+
+func cm(c *CPU) uint16 {
+	return callCond(c, c.flags.S == 1)
+}
+
+func callRst(c *CPU, addr uint16) uint16 {
+	call(c)
+	c.pc = addr
+	return 0
+}
+
+func rst0(c *CPU) uint16 {
+	callRst(c, 0x00)
+	return 0
+}
+
+func rst1(c *CPU) uint16 {
+	callRst(c, 0x08)
+	return 0
+}
+
+func rst2(c *CPU) uint16 {
+	callRst(c, 0x10)
+	return 0
+}
+
+func rst3(c *CPU) uint16 {
+	callRst(c, 0x18)
+	return 0
+}
+
+func rst4(c *CPU) uint16 {
+	callRst(c, 0x20)
+	return 0
+}
+
+func rst5(c *CPU) uint16 {
+	callRst(c, 0x28)
+	return 0
+}
+
+func rst6(c *CPU) uint16 {
+	callRst(c, 0x30)
+	return 0
+}
+
+func rst7(c *CPU) uint16 {
+	callRst(c, 0x38)
+	return 0
+}
+
+func pchl(c *CPU) uint16 {
+	c.pc = c.getHL()
+	return 0
+}
+
+// Stack Group
 
 func pushB(c *CPU) uint16 {
 	c.push(c.getBC())
@@ -1478,24 +1558,6 @@ func popPSW(c *CPU) uint16 {
 	return 1
 }
 
-func lhld(c *CPU) uint16 {
-	c.reg.L = c.read(c.getNextTwoBytes())
-	c.reg.H = c.read(c.getNextTwoBytes() + 1)
-	return 3
-}
-
-func shld(c *CPU) uint16 {
-	c.write(c.getNextTwoBytes(), c.reg.L)
-	c.write(c.getNextTwoBytes()+1, c.reg.H)
-	return 3
-}
-
-func xchg(c *CPU) uint16 {
-	c.reg.H, c.reg.D = c.reg.D, c.reg.H
-	c.reg.L, c.reg.E = c.reg.E, c.reg.L
-	return 1
-}
-
 func xthl(c *CPU) uint16 {
 	sp1 := c.read(c.sp)
 	sp2 := c.read(c.sp + 1)
@@ -1511,49 +1573,21 @@ func sphl(c *CPU) uint16 {
 	return 1
 }
 
-func pchl(c *CPU) uint16 {
-	c.pc = c.getHL()
-	return 0
+// IO and Machine Control Group
+
+func in(c *CPU) uint16 {
+	return 2
 }
 
-func rlc(c *CPU) uint16 {
-	c.flags.CY = c.reg.A >> 7
-	c.reg.A = (c.reg.A << 1) | c.flags.CY
+func out(c *CPU) uint16 {
+	return 2
+}
+
+func ei(c *CPU) uint16 {
 	return 1
 }
 
-func rrc(c *CPU) uint16 {
-	c.flags.CY = c.reg.A & 1
-	c.reg.A = (c.reg.A >> 1) | (c.flags.CY << 7)
-	return 1
-}
-
-func ral(c *CPU) uint16 {
-	cy := c.flags.CY
-	c.flags.CY = c.reg.A >> 7
-	c.reg.A = (c.reg.A << 1) | cy
-	return 1
-}
-
-func rar(c *CPU) uint16 {
-	cy := c.flags.CY
-	c.flags.CY = c.reg.A & 1
-	c.reg.A = (c.reg.A >> 1) | (cy << 7)
-	return 1
-}
-
-func stc(c *CPU) uint16 {
-	c.flags.CY = 1
-	return 1
-}
-
-func cmc(c *CPU) uint16 {
-	c.flags.CY ^= 1
-	return 1
-}
-
-func cma(c *CPU) uint16 {
-	c.reg.A ^= 255
+func di(c *CPU) uint16 {
 	return 1
 }
 
@@ -1562,42 +1596,6 @@ func hlt(c *CPU) uint16 {
 	return 1
 }
 
-func rst0(c *CPU) uint16 {
-	callRst(c, 0x00)
-	return 0
-}
-
-func rst1(c *CPU) uint16 {
-	callRst(c, 0x08)
-	return 0
-}
-
-func rst2(c *CPU) uint16 {
-	callRst(c, 0x10)
-	return 0
-}
-
-func rst3(c *CPU) uint16 {
-	callRst(c, 0x18)
-	return 0
-}
-
-func rst4(c *CPU) uint16 {
-	callRst(c, 0x20)
-	return 0
-}
-
-func rst5(c *CPU) uint16 {
-	callRst(c, 0x28)
-	return 0
-}
-
-func rst6(c *CPU) uint16 {
-	callRst(c, 0x30)
-	return 0
-}
-
-func rst7(c *CPU) uint16 {
-	callRst(c, 0x38)
-	return 0
+func noOp(c *CPU) uint16 {
+	return 1
 }
