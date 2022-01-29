@@ -7,9 +7,11 @@ import (
 )
 
 type TestMachine struct {
-	cpu       *i8080.CPU
-	running   bool
-	showDebug bool
+	cpu        *i8080.CPU
+	cycles     int
+	instrCount int
+	running    bool
+	showDebug  bool
 }
 
 func NewTestMachine(filename string, showDebug bool) *TestMachine {
@@ -26,16 +28,16 @@ func NewTestMachine(filename string, showDebug bool) *TestMachine {
 }
 
 func (tm *TestMachine) Run() {
-	instrs := 0
 	for tm.running {
 		if tm.showDebug {
 			tm.printState()
 		}
 		tm.cpu.Execute()
-		instrs++
+		tm.instrCount++
 	}
+	tm.cycles = tm.cpu.GetCycles()
 	fmt.Println("\n\n----------------------")
-	fmt.Printf("Test Completed\nInstructions: %d\nCycles: %d", instrs, tm.cpu.GetCycles())
+	fmt.Printf("Test Completed\nInstructions: %d\nCycles: %d\n\n", tm.instrCount, tm.cycles)
 }
 
 func (tm *TestMachine) portIn(port uint8) {
