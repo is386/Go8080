@@ -13,10 +13,16 @@ type Emulator struct {
 	intEnable uint8
 	flags     *Flags
 	halt      bool
+	showDebug bool
+	isTest    bool
+	portIn    func()
+	portOut   func()
 }
 
-func NewEmulator(pcStart uint16) *Emulator {
-	return &Emulator{reg: &Registers{}, flags: &Flags{}, pc: pcStart, halt: false}
+func NewEmulator(pcStart uint16, showDebug bool, isTest bool, portIn func(), portOut func()) *Emulator {
+	return &Emulator{
+		reg: &Registers{}, flags: &Flags{}, pc: pcStart, showDebug: showDebug,
+		isTest: isTest, portIn: portIn, portOut: portOut}
 }
 
 func (e *Emulator) LoadRom(filename string, offset uint16) {
@@ -27,9 +33,9 @@ func (e *Emulator) LoadRom(filename string, offset uint16) {
 	for i := 0; i < len(rom); i++ {
 		e.mem[offset+uint16(i)] = rom[i]
 	}
-
-	// CPU DIAG
-	e.mem[0x7] = 0xc9
+	if e.isTest {
+		e.mem[0x7] = 0xc9
+	}
 }
 
 func (e *Emulator) fetch() uint8 {
@@ -43,28 +49,33 @@ func (e *Emulator) decode(opcode uint8) func(*Emulator) uint16 {
 func (e *Emulator) Execute() bool {
 	opcode := e.fetch()
 	instr := e.decode(opcode)
-	out := e.showDebug(opcode)
+	out := true
+	if e.showDebug {
+		e.debugOutput(opcode)
+	}
+	if e.isTest {
+		out = e.testOutput()
+	}
 	steps := instr(e)
 	e.pc += steps
 	return !e.halt && out
 }
 
-func (e *Emulator) showDebug(opcode uint8) bool {
-	// fmt.Printf("\nPC:%04X OP:%02X SP:%04X BC:%04X DE:%04X HL:%04X A:%02X Cy:%dAC:%d S:%d Z:%d P:%d",
-	// 	e.pc, opcode, e.sp, e.getBC(), e.getDE(), e.getHL(), e.reg.A, e.flags.CY, e.flags.AC,
-	// 	e.flags.S, e.flags.Z, e.flags.P)
-	// PC: 0100, AF: 0002, BC: 0000, DE: 0000, HL: 0000, SP: 0000, CYC: 0	(3E 01 FE 02)
-	// f := uint8(0)
-	// f |= e.flags.S << 7
-	// f |= e.flags.Z << 6
-	// f |= e.flags.AC << 4
-	// f |= e.flags.P << 2
-	// f |= 1 << 1
-	// f |= e.flags.CY << 0
+func (e *Emulator) debugOutput(opcode uint8) {
+	f := uint8(0)
+	f |= e.flags.S << 7
+	f |= e.flags.Z << 6
+	f |= e.flags.AC << 4
+	f |= e.flags.P << 2
+	f |= 1 << 1
+	f |= e.flags.CY << 0
 
-	// fmt.Printf("\nPC: %04X, AF: %04X, BC: %04X, DE: %04X, HL: %04X, SP: %04X (%02X %02X %02X %02X)",
-	// 	e.pc, uint16(e.reg.A)<<8|uint16(f), e.getBC(), e.getDE(), e.getHL(), e.sp, opcode,
-	// 	e.mem[e.pc+1], e.mem[e.pc+2], e.mem[e.pc+3])
+	fmt.Printf("\nPC: %04X, AF: %04X, BC: %04X, DE: %04X, HL: %04X, SP: %04X (%02X %02X %02X %02X)",
+		e.pc, uint16(e.reg.A)<<8|uint16(f), e.getBC(), e.getDE(), e.getHL(), e.sp, opcode,
+		e.mem[e.pc+1], e.mem[e.pc+2], e.mem[e.pc+3])
+}
+
+func (e *Emulator) testOutput() bool {
 	if e.pc == 5 {
 		if e.reg.C == 9 {
 			fmt.Println()
@@ -81,7 +92,6 @@ func (e *Emulator) showDebug(opcode uint8) bool {
 	} else if e.pc == 0 {
 		return false
 	}
-
 	return true
 }
 

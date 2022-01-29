@@ -7,13 +7,11 @@ import (
 var (
 	FILENAME = "roms/TST8080.COM"
 	PC       = uint16(0x100)
+	DEBUG    = false
+	TEST     = true
 )
 
 func main() {
-	emu := i8080.NewEmulator(PC)
-	emu.LoadRom(FILENAME, PC)
-	running := true
-	for running {
-		running = emu.Execute()
-	}
+	im := i8080.NewInvadersMachine(FILENAME, PC, DEBUG, TEST)
+	im.Run()
 }
