@@ -1,8 +1,8 @@
 package i8080
 
 import (
-	"fmt"
 	"io/ioutil"
+	"os"
 )
 
 // TODO: move out debugging stuff
@@ -28,35 +28,87 @@ var (
 )
 
 type CPU struct {
-	mem                     [64 * 1024]uint8
-	reg                     *Registers
-	flags                   *Flags
-	pc, sp                  uint16
-	cyc                     int
-	halt, showDebug, isTest bool
-	portIn, portOut         func()
+	mem             [64 * 1024]uint8
+	reg             *Registers
+	flags           *Flags
+	pc, sp          uint16
+	cyc             int
+	portIn, portOut func(uint8)
 }
 
-func NewCPU(pcStart uint16, showDebug bool, isTest bool, portIn func(), portOut func()) *CPU {
-	return &CPU{
-		reg: &Registers{}, flags: &Flags{}, pc: pcStart, showDebug: showDebug,
-		isTest: isTest, portIn: portIn, portOut: portOut}
+func NewCPU(pc uint16, portIn func(uint8), portOut func(uint8)) *CPU {
+	return &CPU{reg: &Registers{}, flags: &Flags{}, pc: pc, portIn: portIn, portOut: portOut}
 }
 
-func (c *CPU) LoadRom(filename string, offset uint16) {
+func (c *CPU) GetMemory() *[65536]uint8 {
+	return &c.mem
+}
+
+func (c *CPU) GetRegisters() *Registers {
+	return c.reg
+}
+
+func (c *CPU) GetPC() uint16 {
+	return c.pc
+}
+
+func (c *CPU) GetSP() uint16 {
+	return c.sp
+}
+
+func (c *CPU) GetCycles() int {
+	return c.cyc
+}
+
+func (c *CPU) GetAF() uint16 {
+	f := uint8(0)
+	f |= c.flags.S << 7
+	f |= c.flags.Z << 6
+	f |= c.flags.AC << 4
+	f |= c.flags.P << 2
+	f |= 1 << 1
+	f |= c.flags.CY << 0
+	return (uint16(c.reg.A) << 8) | uint16(f)
+}
+
+func (c *CPU) GetBC() uint16 {
+	return (uint16(c.reg.B) << 8) | uint16(c.reg.C)
+}
+
+func (c *CPU) GetDE() uint16 {
+	return (uint16(c.reg.D) << 8) | uint16(c.reg.E)
+}
+
+func (c *CPU) GetHL() uint16 {
+	return (uint16(c.reg.H) << 8) | uint16(c.reg.L)
+}
+
+func (c *CPU) setBC(val uint16) {
+	c.reg.B = uint8(val >> 8)
+	c.reg.C = uint8(val & 0xff)
+}
+
+func (c *CPU) setDE(val uint16) {
+	c.reg.D = uint8(val >> 8)
+	c.reg.E = uint8(val & 0xff)
+}
+
+func (c *CPU) setHL(val uint16) {
+	c.reg.H = uint8(val >> 8)
+	c.reg.L = uint8(val & 0xff)
+}
+
+func (c *CPU) LoadRom(filename string) {
 	rom, err := ioutil.ReadFile(filename)
 	if err != nil {
 		panic(err)
 	}
 	for i := 0; i < len(rom); i++ {
-		c.mem[offset+uint16(i)] = rom[i]
-	}
-	if c.isTest {
-		c.mem[0x7] = 0xc9
+		c.mem[c.pc+uint16(i)] = rom[i]
 	}
 }
 
-func (c *CPU) write(addr uint16, val uint8) {
+func (c *CPU) Write(addr uint16, val uint8) {
 	c.mem[addr] = val
 }
 
@@ -76,33 +128,6 @@ func (c *CPU) getNextTwoBytes() uint16 {
 	return (uint16(c.getSecondByte()) << 8) | uint16(c.mem[c.pc+1])
 }
 
-func (c *CPU) getBC() uint16 {
-	return (uint16(c.reg.B) << 8) | uint16(c.reg.C)
-}
-
-func (c *CPU) getDE() uint16 {
-	return (uint16(c.reg.D) << 8) | uint16(c.reg.E)
-}
-
-func (c *CPU) getHL() uint16 {
-	return (uint16(c.reg.H) << 8) | uint16(c.reg.L)
-}
-
-func (c *CPU) setBC(val uint16) {
-	c.reg.B = uint8(val >> 8)
-	c.reg.C = uint8(val & 0xff)
-}
-
-func (c *CPU) setDE(val uint16) {
-	c.reg.D = uint8(val >> 8)
-	c.reg.E = uint8(val & 0xff)
-}
-
-func (c *CPU) setHL(val uint16) {
-	c.reg.H = uint8(val >> 8)
-	c.reg.L = uint8(val & 0xff)
-}
-
 func (c *CPU) fetch() uint8 {
 	return c.read(c.pc)
 }
@@ -111,56 +136,12 @@ func (c *CPU) decode(opcode uint8) func(*CPU) uint16 {
 	return INSTRUCTIONS[opcode]
 }
 
-func (c *CPU) Execute() bool {
+func (c *CPU) Execute() {
 	opcode := c.fetch()
 	c.cyc += CYCLES[opcode]
 	instr := c.decode(opcode)
-	out := true
-
-	if c.showDebug {
-		c.debugOutput()
-	}
-
-	if c.isTest {
-		out = c.testOutput()
-	}
-
 	steps := instr(c)
 	c.pc += steps
-	return !c.halt && out
-}
-
-func (c *CPU) debugOutput() {
-	f := uint8(0)
-	f |= c.flags.S << 7
-	f |= c.flags.Z << 6
-	f |= c.flags.AC << 4
-	f |= c.flags.P << 2
-	f |= 1 << 1
-	f |= c.flags.CY << 0
-	fmt.Printf("\nPC: %04X, AF: %04X, BC: %04X, DE: %04X, HL: %04X, SP: %04X (%02X %02X %02X %02X)",
-		c.pc, uint16(c.reg.A)<<8|uint16(f), c.getBC(), c.getDE(), c.getHL(), c.sp, c.fetch(),
-		c.getNextByte(), c.getSecondByte(), c.read(c.pc+3))
-}
-
-func (c *CPU) testOutput() bool {
-	if c.pc == 5 {
-		if c.reg.C == 9 {
-			fmt.Println()
-			offset := c.getDE()
-			str := c.read(offset)
-			for str != '$' {
-				fmt.Printf("%c", str)
-				offset += 1
-				str = c.read(offset)
-			}
-		} else if c.reg.C == 2 {
-			fmt.Printf("%c", c.reg.E)
-		}
-	} else if c.pc == 0 {
-		return false
-	}
-	return true
 }
 
 func (c *CPU) setZSP(val uint8) {
@@ -254,7 +235,7 @@ func (c *CPU) dcr(val uint8) uint8 {
 }
 
 func (c *CPU) dad(val uint16) {
-	ans := uint32(c.getHL()) + uint32(val)
+	ans := uint32(c.GetHL()) + uint32(val)
 	c.setHL(uint16(ans))
 	if (ans & 0xffff0000) > 0 {
 		c.flags.CY = 1
@@ -303,8 +284,8 @@ func (c *CPU) cmp(val uint8) {
 }
 
 func (c *CPU) push(val uint16) {
-	c.write(c.sp-1, uint8(val>>8))
-	c.write(c.sp-2, uint8(val&0xff))
+	c.Write(c.sp-1, uint8(val>>8))
+	c.Write(c.sp-2, uint8(val&0xff))
 	c.sp -= 2
 }
 
@@ -345,7 +326,7 @@ func movBL(c *CPU) uint16 {
 }
 
 func movBM(c *CPU) uint16 {
-	c.reg.B = c.read(c.getHL())
+	c.reg.B = c.read(c.GetHL())
 	return 1
 }
 
@@ -384,7 +365,7 @@ func movCL(c *CPU) uint16 {
 }
 
 func movCM(c *CPU) uint16 {
-	c.reg.C = c.read(c.getHL())
+	c.reg.C = c.read(c.GetHL())
 	return 1
 }
 
@@ -423,7 +404,7 @@ func movDL(c *CPU) uint16 {
 }
 
 func movDM(c *CPU) uint16 {
-	c.reg.D = c.read(c.getHL())
+	c.reg.D = c.read(c.GetHL())
 	return 1
 }
 
@@ -462,7 +443,7 @@ func movEL(c *CPU) uint16 {
 }
 
 func movEM(c *CPU) uint16 {
-	c.reg.E = c.read(c.getHL())
+	c.reg.E = c.read(c.GetHL())
 	return 1
 }
 
@@ -501,7 +482,7 @@ func movHL(c *CPU) uint16 {
 }
 
 func movHM(c *CPU) uint16 {
-	c.reg.H = c.read(c.getHL())
+	c.reg.H = c.read(c.GetHL())
 	return 1
 }
 
@@ -540,7 +521,7 @@ func movLL(c *CPU) uint16 {
 }
 
 func movLM(c *CPU) uint16 {
-	c.reg.L = c.read(c.getHL())
+	c.reg.L = c.read(c.GetHL())
 	return 1
 }
 
@@ -580,7 +561,7 @@ func movAL(c *CPU) uint16 {
 }
 
 func movAM(c *CPU) uint16 {
-	c.reg.A = c.read(c.getHL())
+	c.reg.A = c.read(c.GetHL())
 	return 1
 }
 
@@ -589,37 +570,37 @@ func movAA(c *CPU) uint16 {
 }
 
 func movMB(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.B)
+	c.Write(c.GetHL(), c.reg.B)
 	return 1
 }
 
 func movMC(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.C)
+	c.Write(c.GetHL(), c.reg.C)
 	return 1
 }
 
 func movMD(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.D)
+	c.Write(c.GetHL(), c.reg.D)
 	return 1
 }
 
 func movME(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.E)
+	c.Write(c.GetHL(), c.reg.E)
 	return 1
 }
 
 func movMH(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.H)
+	c.Write(c.GetHL(), c.reg.H)
 	return 1
 }
 
 func movML(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.L)
+	c.Write(c.GetHL(), c.reg.L)
 	return 1
 }
 
 func movMA(c *CPU) uint16 {
-	c.write(c.getHL(), c.reg.A)
+	c.Write(c.GetHL(), c.reg.A)
 	return 1
 }
 
@@ -659,7 +640,7 @@ func mviA(c *CPU) uint16 {
 }
 
 func mviM(c *CPU) uint16 {
-	c.write(c.getHL(), c.getNextByte())
+	c.Write(c.GetHL(), c.getNextByte())
 	return 2
 }
 
@@ -689,7 +670,7 @@ func lda(c *CPU) uint16 {
 }
 
 func sta(c *CPU) uint16 {
-	c.write(c.getNextTwoBytes(), c.reg.A)
+	c.Write(c.getNextTwoBytes(), c.reg.A)
 	return 3
 }
 
@@ -700,28 +681,28 @@ func lhld(c *CPU) uint16 {
 }
 
 func shld(c *CPU) uint16 {
-	c.write(c.getNextTwoBytes(), c.reg.L)
-	c.write(c.getNextTwoBytes()+1, c.reg.H)
+	c.Write(c.getNextTwoBytes(), c.reg.L)
+	c.Write(c.getNextTwoBytes()+1, c.reg.H)
 	return 3
 }
 
 func ldaxB(c *CPU) uint16 {
-	c.reg.A = c.read(c.getBC())
+	c.reg.A = c.read(c.GetBC())
 	return 1
 }
 
 func ldaxD(c *CPU) uint16 {
-	c.reg.A = c.read(c.getDE())
+	c.reg.A = c.read(c.GetDE())
 	return 1
 }
 
 func staxB(c *CPU) uint16 {
-	c.write(c.getBC(), c.reg.A)
+	c.Write(c.GetBC(), c.reg.A)
 	return 1
 }
 
 func staxD(c *CPU) uint16 {
-	c.write(c.getDE(), c.reg.A)
+	c.Write(c.GetDE(), c.reg.A)
 	return 1
 }
 
@@ -764,7 +745,7 @@ func addL(c *CPU) uint16 {
 }
 
 func addM(c *CPU) uint16 {
-	c.add(c.read(c.getHL()), 0)
+	c.add(c.read(c.GetHL()), 0)
 	return 1
 }
 
@@ -814,7 +795,7 @@ func adcA(c *CPU) uint16 {
 }
 
 func adcM(c *CPU) uint16 {
-	c.add(c.read(c.getHL()), c.flags.CY)
+	c.add(c.read(c.GetHL()), c.flags.CY)
 	return 1
 }
 
@@ -859,7 +840,7 @@ func subA(c *CPU) uint16 {
 }
 
 func subM(c *CPU) uint16 {
-	c.sub(c.read(c.getHL()), 0)
+	c.sub(c.read(c.GetHL()), 0)
 	return 1
 }
 
@@ -904,7 +885,7 @@ func sbbA(c *CPU) uint16 {
 }
 
 func sbbM(c *CPU) uint16 {
-	c.sub(c.read(c.getHL()), c.flags.CY)
+	c.sub(c.read(c.GetHL()), c.flags.CY)
 	return 1
 }
 
@@ -949,7 +930,7 @@ func inrA(c *CPU) uint16 {
 }
 
 func inrM(c *CPU) uint16 {
-	c.write(c.getHL(), c.inr(c.read(c.getHL())))
+	c.Write(c.GetHL(), c.inr(c.read(c.GetHL())))
 	return 1
 }
 
@@ -989,22 +970,22 @@ func dcrA(c *CPU) uint16 {
 }
 
 func dcrM(c *CPU) uint16 {
-	c.write(c.getHL(), c.dcr(c.read(c.getHL())))
+	c.Write(c.GetHL(), c.dcr(c.read(c.GetHL())))
 	return 1
 }
 
 func inxB(c *CPU) uint16 {
-	c.setBC(c.getBC() + 1)
+	c.setBC(c.GetBC() + 1)
 	return 1
 }
 
 func inxD(c *CPU) uint16 {
-	c.setDE(c.getDE() + 1)
+	c.setDE(c.GetDE() + 1)
 	return 1
 }
 
 func inxH(c *CPU) uint16 {
-	c.setHL(c.getHL() + 1)
+	c.setHL(c.GetHL() + 1)
 	return 1
 }
 
@@ -1014,17 +995,17 @@ func inxSP(c *CPU) uint16 {
 }
 
 func dcxB(c *CPU) uint16 {
-	c.setBC(c.getBC() - 1)
+	c.setBC(c.GetBC() - 1)
 	return 1
 }
 
 func dcxD(c *CPU) uint16 {
-	c.setDE(c.getDE() - 1)
+	c.setDE(c.GetDE() - 1)
 	return 1
 }
 
 func dcxH(c *CPU) uint16 {
-	c.setHL(c.getHL() - 1)
+	c.setHL(c.GetHL() - 1)
 	return 1
 }
 
@@ -1034,17 +1015,17 @@ func dcxSP(c *CPU) uint16 {
 }
 
 func dadB(c *CPU) uint16 {
-	c.dad(c.getBC())
+	c.dad(c.GetBC())
 	return 1
 }
 
 func dadD(c *CPU) uint16 {
-	c.dad(c.getDE())
+	c.dad(c.GetDE())
 	return 1
 }
 
 func dadH(c *CPU) uint16 {
-	c.dad(c.getHL())
+	c.dad(c.GetHL())
 	return 1
 }
 
@@ -1111,7 +1092,7 @@ func anaA(c *CPU) uint16 {
 }
 
 func anaM(c *CPU) uint16 {
-	c.and(c.read(c.getHL()))
+	c.and(c.read(c.GetHL()))
 	return 1
 }
 
@@ -1156,7 +1137,7 @@ func oraA(c *CPU) uint16 {
 }
 
 func oraM(c *CPU) uint16 {
-	c.or(c.read(c.getHL()))
+	c.or(c.read(c.GetHL()))
 	return 1
 }
 
@@ -1201,7 +1182,7 @@ func xraA(c *CPU) uint16 {
 }
 
 func xraM(c *CPU) uint16 {
-	c.xor(c.read(c.getHL()))
+	c.xor(c.read(c.GetHL()))
 	return 1
 }
 
@@ -1246,7 +1227,7 @@ func cmpA(c *CPU) uint16 {
 }
 
 func cmpM(c *CPU) uint16 {
-	c.cmp(c.read(c.getHL()))
+	c.cmp(c.read(c.GetHL()))
 	return 1
 }
 
@@ -1484,24 +1465,24 @@ func rst7(c *CPU) uint16 {
 }
 
 func pchl(c *CPU) uint16 {
-	c.pc = c.getHL()
+	c.pc = c.GetHL()
 	return 0
 }
 
 // Stack Group
 
 func pushB(c *CPU) uint16 {
-	c.push(c.getBC())
+	c.push(c.GetBC())
 	return 1
 }
 
 func pushD(c *CPU) uint16 {
-	c.push(c.getDE())
+	c.push(c.GetDE())
 	return 1
 }
 
 func pushH(c *CPU) uint16 {
-	c.push(c.getHL())
+	c.push(c.GetHL())
 	return 1
 }
 
@@ -1561,25 +1542,27 @@ func popPSW(c *CPU) uint16 {
 func xthl(c *CPU) uint16 {
 	sp1 := c.read(c.sp)
 	sp2 := c.read(c.sp + 1)
-	c.write(c.sp, c.reg.L)
-	c.write(c.sp+1, c.reg.H)
+	c.Write(c.sp, c.reg.L)
+	c.Write(c.sp+1, c.reg.H)
 	c.reg.H = sp2
 	c.reg.L = sp1
 	return 1
 }
 
 func sphl(c *CPU) uint16 {
-	c.sp = c.getHL()
+	c.sp = c.GetHL()
 	return 1
 }
 
 // IO and Machine Control Group
 
 func in(c *CPU) uint16 {
+	c.portIn(c.getNextByte())
 	return 2
 }
 
 func out(c *CPU) uint16 {
+	c.portOut(c.getNextByte())
 	return 2
 }
 
@@ -1592,7 +1575,7 @@ func di(c *CPU) uint16 {
 }
 
 func hlt(c *CPU) uint16 {
-	c.halt = true
+	os.Exit(0)
 	return 1
 }
 
