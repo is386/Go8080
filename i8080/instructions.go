@@ -1,7 +1,7 @@
 package i8080
 
 var (
-	INSTRUCTIONS = map[uint8]func(*CPU) uint16{
+	INSTRUCTIONS = map[uint8]func(*CPU) (uint16, int){
 		0x00: noOp,
 		0x01: lxiB,
 		0x02: staxB,
