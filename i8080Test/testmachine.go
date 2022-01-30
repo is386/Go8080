@@ -48,7 +48,6 @@ func (tm *TestMachine) portOut(port uint8) {
 	} else if port == 1 {
 		reg := tm.cpu.GetRegisters()
 		if reg.C == 9 {
-			fmt.Println()
 			offset := tm.cpu.GetDE()
 			mem := tm.cpu.GetMemory()
 			str := mem[offset]
