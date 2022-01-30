@@ -122,15 +122,15 @@ func (c *CPU) read(addr uint16) uint8 {
 }
 
 func (c *CPU) getNextByte() uint8 {
-	return c.read(c.pc + 1)
-}
-
-func (c *CPU) getSecondByte() uint8 {
-	return c.read(c.pc + 2)
+	b := c.read(c.pc)
+	c.pc += 1
+	return b
 }
 
 func (c *CPU) getNextTwoBytes() uint16 {
-	return (uint16(c.getSecondByte()) << 8) | uint16(c.getNextByte())
+	a := c.getNextByte()
+	b := c.getNextByte()
+	return (uint16(b) << 8) | uint16(a)
 }
 
 func (c *CPU) fetch() uint8 {
@@ -139,10 +139,10 @@ func (c *CPU) fetch() uint8 {
 		c.flags.I = 0
 		return c.intOpcode
 	}
-	return c.read(c.pc)
+	return c.getNextByte()
 }
 
-func (c *CPU) decode(opcode uint8) func(*CPU) uint16 {
+func (c *CPU) decode(opcode uint8) func(*CPU) {
 	return INSTRUCTIONS[opcode]
 }
 
@@ -153,8 +153,7 @@ func (c *CPU) Execute() {
 		c.intDelay--
 	}
 	instr := c.decode(opcode)
-	steps := instr(c)
-	c.pc += steps
+	instr(c)
 }
 
 func (c *CPU) Interrupt(opcode uint8) {
@@ -255,7 +254,7 @@ func (c *CPU) dcr(val uint8) uint8 {
 func (c *CPU) dad(val uint16) {
 	ans := uint32(c.GetHL()) + uint32(val)
 	c.setHL(uint16(ans))
-	if (ans & 0xffff0000) > 0 {
+	if ((ans >> 16) & 1) == 1 {
 		c.flags.CY = 1
 	} else {
 		c.flags.CY = 0
@@ -314,745 +313,593 @@ func (c *CPU) pop() uint16 {
 
 // Data Transfer Group
 
-func movBB(c *CPU) uint16 {
-	return 1
+func movBB(c *CPU) {
 }
 
-func movBC(c *CPU) uint16 {
+func movBC(c *CPU) {
 	c.reg.B = c.reg.C
-	return 1
 }
 
-func movBD(c *CPU) uint16 {
+func movBD(c *CPU) {
 	c.reg.B = c.reg.D
-	return 1
 }
 
-func movBE(c *CPU) uint16 {
+func movBE(c *CPU) {
 	c.reg.B = c.reg.E
-	return 1
 }
 
-func movBH(c *CPU) uint16 {
+func movBH(c *CPU) {
 	c.reg.B = c.reg.H
-	return 1
 }
 
-func movBL(c *CPU) uint16 {
+func movBL(c *CPU) {
 	c.reg.B = c.reg.L
-	return 1
 }
 
-func movBM(c *CPU) uint16 {
+func movBM(c *CPU) {
 	c.reg.B = c.read(c.GetHL())
-	return 1
 }
 
-func movBA(c *CPU) uint16 {
+func movBA(c *CPU) {
 	c.reg.B = c.reg.A
-	return 1
 }
 
-func movCB(c *CPU) uint16 {
+func movCB(c *CPU) {
 	c.reg.C = c.reg.B
-	return 1
 }
 
-func movCC(c *CPU) uint16 {
-	return 1
-}
+func movCC(c *CPU) {}
 
-func movCD(c *CPU) uint16 {
+func movCD(c *CPU) {
 	c.reg.C = c.reg.D
-	return 1
 }
 
-func movCE(c *CPU) uint16 {
+func movCE(c *CPU) {
 	c.reg.C = c.reg.E
-	return 1
 }
 
-func movCH(c *CPU) uint16 {
+func movCH(c *CPU) {
 	c.reg.C = c.reg.H
-	return 1
 }
 
-func movCL(c *CPU) uint16 {
+func movCL(c *CPU) {
 	c.reg.C = c.reg.L
-	return 1
 }
 
-func movCM(c *CPU) uint16 {
+func movCM(c *CPU) {
 	c.reg.C = c.read(c.GetHL())
-	return 1
 }
 
-func movCA(c *CPU) uint16 {
+func movCA(c *CPU) {
 	c.reg.C = c.reg.A
-	return 1
 }
 
-func movDB(c *CPU) uint16 {
+func movDB(c *CPU) {
 	c.reg.D = c.reg.B
-	return 1
 }
 
-func movDC(c *CPU) uint16 {
+func movDC(c *CPU) {
 	c.reg.D = c.reg.C
-	return 1
 }
 
-func movDD(c *CPU) uint16 {
-	return 1
-}
+func movDD(c *CPU) {}
 
-func movDE(c *CPU) uint16 {
+func movDE(c *CPU) {
 	c.reg.D = c.reg.E
-	return 1
 }
 
-func movDH(c *CPU) uint16 {
+func movDH(c *CPU) {
 	c.reg.D = c.reg.H
-	return 1
 }
 
-func movDL(c *CPU) uint16 {
+func movDL(c *CPU) {
 	c.reg.D = c.reg.L
-	return 1
 }
 
-func movDM(c *CPU) uint16 {
+func movDM(c *CPU) {
 	c.reg.D = c.read(c.GetHL())
-	return 1
 }
 
-func movDA(c *CPU) uint16 {
+func movDA(c *CPU) {
 	c.reg.D = c.reg.A
-	return 1
 }
 
-func movEB(c *CPU) uint16 {
+func movEB(c *CPU) {
 	c.reg.E = c.reg.B
-	return 1
 }
 
-func movEC(c *CPU) uint16 {
+func movEC(c *CPU) {
 	c.reg.E = c.reg.C
-	return 1
 }
 
-func movED(c *CPU) uint16 {
+func movED(c *CPU) {
 	c.reg.E = c.reg.D
-	return 1
 }
 
-func movEE(c *CPU) uint16 {
-	return 1
-}
+func movEE(c *CPU) {}
 
-func movEH(c *CPU) uint16 {
+func movEH(c *CPU) {
 	c.reg.E = c.reg.H
-	return 1
 }
 
-func movEL(c *CPU) uint16 {
+func movEL(c *CPU) {
 	c.reg.E = c.reg.L
-	return 1
 }
 
-func movEM(c *CPU) uint16 {
+func movEM(c *CPU) {
 	c.reg.E = c.read(c.GetHL())
-	return 1
 }
 
-func movEA(c *CPU) uint16 {
+func movEA(c *CPU) {
 	c.reg.E = c.reg.A
-	return 1
 }
 
-func movHB(c *CPU) uint16 {
+func movHB(c *CPU) {
 	c.reg.H = c.reg.B
-	return 1
 }
 
-func movHC(c *CPU) uint16 {
+func movHC(c *CPU) {
 	c.reg.H = c.reg.C
-	return 1
 }
 
-func movHD(c *CPU) uint16 {
+func movHD(c *CPU) {
 	c.reg.H = c.reg.D
-	return 1
 }
 
-func movHE(c *CPU) uint16 {
+func movHE(c *CPU) {
 	c.reg.H = c.reg.E
-	return 1
 }
 
-func movHH(c *CPU) uint16 {
-	return 1
-}
+func movHH(c *CPU) {}
 
-func movHL(c *CPU) uint16 {
+func movHL(c *CPU) {
 	c.reg.H = c.reg.L
-	return 1
 }
 
-func movHM(c *CPU) uint16 {
+func movHM(c *CPU) {
 	c.reg.H = c.read(c.GetHL())
-	return 1
 }
 
-func movHA(c *CPU) uint16 {
+func movHA(c *CPU) {
 	c.reg.H = c.reg.A
-	return 1
 }
 
-func movLB(c *CPU) uint16 {
+func movLB(c *CPU) {
 	c.reg.L = c.reg.B
-	return 1
 }
 
-func movLC(c *CPU) uint16 {
+func movLC(c *CPU) {
 	c.reg.L = c.reg.C
-	return 1
 }
 
-func movLD(c *CPU) uint16 {
+func movLD(c *CPU) {
 	c.reg.L = c.reg.D
-	return 1
 }
 
-func movLE(c *CPU) uint16 {
+func movLE(c *CPU) {
 	c.reg.L = c.reg.E
-	return 1
 }
 
-func movLH(c *CPU) uint16 {
+func movLH(c *CPU) {
 	c.reg.L = c.reg.H
-	return 1
 }
 
-func movLL(c *CPU) uint16 {
-	return 1
-}
+func movLL(c *CPU) {}
 
-func movLM(c *CPU) uint16 {
+func movLM(c *CPU) {
 	c.reg.L = c.read(c.GetHL())
-	return 1
 }
 
-func movLA(c *CPU) uint16 {
+func movLA(c *CPU) {
 	c.reg.L = c.reg.A
-	return 1
 }
 
-func movAB(c *CPU) uint16 {
+func movAB(c *CPU) {
 	c.reg.A = c.reg.B
-	return 1
 }
 
-func movAC(c *CPU) uint16 {
+func movAC(c *CPU) {
 	c.reg.A = c.reg.C
-	return 1
 }
 
-func movAD(c *CPU) uint16 {
+func movAD(c *CPU) {
 	c.reg.A = c.reg.D
-	return 1
 }
 
-func movAE(c *CPU) uint16 {
+func movAE(c *CPU) {
 	c.reg.A = c.reg.E
-	return 1
 }
 
-func movAH(c *CPU) uint16 {
+func movAH(c *CPU) {
 	c.reg.A = c.reg.H
-	return 1
 }
 
-func movAL(c *CPU) uint16 {
+func movAL(c *CPU) {
 	c.reg.A = c.reg.L
-	return 1
 }
 
-func movAM(c *CPU) uint16 {
+func movAM(c *CPU) {
 	c.reg.A = c.read(c.GetHL())
-	return 1
 }
 
-func movAA(c *CPU) uint16 {
-	return 1
-}
+func movAA(c *CPU) {}
 
-func movMB(c *CPU) uint16 {
+func movMB(c *CPU) {
 	c.Write(c.GetHL(), c.reg.B)
-	return 1
 }
 
-func movMC(c *CPU) uint16 {
+func movMC(c *CPU) {
 	c.Write(c.GetHL(), c.reg.C)
-	return 1
 }
 
-func movMD(c *CPU) uint16 {
+func movMD(c *CPU) {
 	c.Write(c.GetHL(), c.reg.D)
-	return 1
 }
 
-func movME(c *CPU) uint16 {
+func movME(c *CPU) {
 	c.Write(c.GetHL(), c.reg.E)
-	return 1
 }
 
-func movMH(c *CPU) uint16 {
+func movMH(c *CPU) {
 	c.Write(c.GetHL(), c.reg.H)
-	return 1
 }
 
-func movML(c *CPU) uint16 {
+func movML(c *CPU) {
 	c.Write(c.GetHL(), c.reg.L)
-	return 1
 }
 
-func movMA(c *CPU) uint16 {
+func movMA(c *CPU) {
 	c.Write(c.GetHL(), c.reg.A)
-	return 1
 }
 
-func mviB(c *CPU) uint16 {
+func mviB(c *CPU) {
 	c.reg.B = c.getNextByte()
-	return 2
 }
 
-func mviC(c *CPU) uint16 {
+func mviC(c *CPU) {
 	c.reg.C = c.getNextByte()
-	return 2
 }
 
-func mviD(c *CPU) uint16 {
+func mviD(c *CPU) {
 	c.reg.D = c.getNextByte()
-	return 2
 }
 
-func mviE(c *CPU) uint16 {
+func mviE(c *CPU) {
 	c.reg.E = c.getNextByte()
-	return 2
 }
 
-func mviH(c *CPU) uint16 {
+func mviH(c *CPU) {
 	c.reg.H = c.getNextByte()
-	return 2
 }
 
-func mviL(c *CPU) uint16 {
+func mviL(c *CPU) {
 	c.reg.L = c.getNextByte()
-	return 2
 }
 
-func mviA(c *CPU) uint16 {
+func mviA(c *CPU) {
 	c.reg.A = c.getNextByte()
-	return 2
 }
 
-func mviM(c *CPU) uint16 {
+func mviM(c *CPU) {
 	c.Write(c.GetHL(), c.getNextByte())
-	return 2
 }
 
-func lxiB(c *CPU) uint16 {
+func lxiB(c *CPU) {
 	c.setBC(c.getNextTwoBytes())
-	return 3
 }
 
-func lxiD(c *CPU) uint16 {
+func lxiD(c *CPU) {
 	c.setDE(c.getNextTwoBytes())
-	return 3
 }
 
-func lxiH(c *CPU) uint16 {
+func lxiH(c *CPU) {
 	c.setHL(c.getNextTwoBytes())
-	return 3
 }
 
-func lxiSP(c *CPU) uint16 {
+func lxiSP(c *CPU) {
 	c.sp = c.getNextTwoBytes()
-	return 3
 }
 
-func lda(c *CPU) uint16 {
+func lda(c *CPU) {
 	c.reg.A = c.read(c.getNextTwoBytes())
-	return 3
 }
 
-func sta(c *CPU) uint16 {
+func sta(c *CPU) {
 	c.Write(c.getNextTwoBytes(), c.reg.A)
-	return 3
 }
 
-func lhld(c *CPU) uint16 {
-	c.reg.L = c.read(c.getNextTwoBytes())
-	c.reg.H = c.read(c.getNextTwoBytes() + 1)
-	return 3
+func lhld(c *CPU) {
+	addr := c.getNextTwoBytes()
+	c.reg.L = c.read(addr)
+	c.reg.H = c.read(addr + 1)
 }
 
-func shld(c *CPU) uint16 {
-	c.Write(c.getNextTwoBytes(), c.reg.L)
-	c.Write(c.getNextTwoBytes()+1, c.reg.H)
-	return 3
+func shld(c *CPU) {
+	addr := c.getNextTwoBytes()
+	c.Write(addr, c.reg.L)
+	c.Write(addr+1, c.reg.H)
 }
 
-func ldaxB(c *CPU) uint16 {
+func ldaxB(c *CPU) {
 	c.reg.A = c.read(c.GetBC())
-	return 1
 }
 
-func ldaxD(c *CPU) uint16 {
+func ldaxD(c *CPU) {
 	c.reg.A = c.read(c.GetDE())
-	return 1
 }
 
-func staxB(c *CPU) uint16 {
+func staxB(c *CPU) {
 	c.Write(c.GetBC(), c.reg.A)
-	return 1
 }
 
-func staxD(c *CPU) uint16 {
+func staxD(c *CPU) {
 	c.Write(c.GetDE(), c.reg.A)
-	return 1
 }
 
-func xchg(c *CPU) uint16 {
+func xchg(c *CPU) {
 	c.reg.H, c.reg.D = c.reg.D, c.reg.H
 	c.reg.L, c.reg.E = c.reg.E, c.reg.L
-	return 1
 }
 
 // Arithmetic Group
 
-func addB(c *CPU) uint16 {
+func addB(c *CPU) {
 	c.add(c.reg.B, 0)
-	return 1
 }
 
-func addC(c *CPU) uint16 {
+func addC(c *CPU) {
 	c.add(c.reg.C, 0)
-	return 1
 }
 
-func addD(c *CPU) uint16 {
+func addD(c *CPU) {
 	c.add(c.reg.D, 0)
-	return 1
 }
 
-func addE(c *CPU) uint16 {
+func addE(c *CPU) {
 	c.add(c.reg.E, 0)
-	return 1
 }
 
-func addH(c *CPU) uint16 {
+func addH(c *CPU) {
 	c.add(c.reg.H, 0)
-	return 1
 }
 
-func addL(c *CPU) uint16 {
+func addL(c *CPU) {
 	c.add(c.reg.L, 0)
-	return 1
 }
 
-func addM(c *CPU) uint16 {
+func addM(c *CPU) {
 	c.add(c.read(c.GetHL()), 0)
-	return 1
 }
 
-func addA(c *CPU) uint16 {
+func addA(c *CPU) {
 	c.add(c.reg.A, 0)
-	return 1
 }
 
-func adi(c *CPU) uint16 {
+func adi(c *CPU) {
 	c.add(c.getNextByte(), 0)
-	return 2
 }
 
-func adcB(c *CPU) uint16 {
+func adcB(c *CPU) {
 	c.add(c.reg.B, c.flags.CY)
-	return 1
 }
 
-func adcC(c *CPU) uint16 {
+func adcC(c *CPU) {
 	c.add(c.reg.C, c.flags.CY)
-	return 1
 }
 
-func adcD(c *CPU) uint16 {
+func adcD(c *CPU) {
 	c.add(c.reg.D, c.flags.CY)
-	return 1
 }
 
-func adcE(c *CPU) uint16 {
+func adcE(c *CPU) {
 	c.add(c.reg.E, c.flags.CY)
-	return 1
 }
 
-func adcH(c *CPU) uint16 {
+func adcH(c *CPU) {
 	c.add(c.reg.H, c.flags.CY)
-	return 1
 }
 
-func adcL(c *CPU) uint16 {
+func adcL(c *CPU) {
 	c.add(c.reg.L, c.flags.CY)
-	return 1
 }
 
-func adcA(c *CPU) uint16 {
+func adcA(c *CPU) {
 	c.add(c.reg.A, c.flags.CY)
-	return 1
 }
 
-func adcM(c *CPU) uint16 {
+func adcM(c *CPU) {
 	c.add(c.read(c.GetHL()), c.flags.CY)
-	return 1
 }
 
-func aci(c *CPU) uint16 {
+func aci(c *CPU) {
 	c.add(c.getNextByte(), c.flags.CY)
-	return 2
 }
 
-func subB(c *CPU) uint16 {
+func subB(c *CPU) {
 	c.sub(c.reg.B, 0)
-	return 1
 }
 
-func subC(c *CPU) uint16 {
+func subC(c *CPU) {
 	c.sub(c.reg.C, 0)
-	return 1
 }
 
-func subD(c *CPU) uint16 {
+func subD(c *CPU) {
 	c.sub(c.reg.D, 0)
-	return 1
 }
 
-func subE(c *CPU) uint16 {
+func subE(c *CPU) {
 	c.sub(c.reg.E, 0)
-	return 1
 }
 
-func subH(c *CPU) uint16 {
+func subH(c *CPU) {
 	c.sub(c.reg.H, 0)
-	return 1
 }
 
-func subL(c *CPU) uint16 {
+func subL(c *CPU) {
 	c.sub(c.reg.L, 0)
-	return 1
 }
 
-func subA(c *CPU) uint16 {
+func subA(c *CPU) {
 	c.sub(c.reg.A, 0)
-	return 1
 }
 
-func subM(c *CPU) uint16 {
+func subM(c *CPU) {
 	c.sub(c.read(c.GetHL()), 0)
-	return 1
 }
 
-func sui(c *CPU) uint16 {
+func sui(c *CPU) {
 	c.sub(c.getNextByte(), 0)
-	return 2
 }
 
-func sbbB(c *CPU) uint16 {
+func sbbB(c *CPU) {
 	c.sub(c.reg.B, c.flags.CY)
-	return 1
 }
 
-func sbbC(c *CPU) uint16 {
+func sbbC(c *CPU) {
 	c.sub(c.reg.C, c.flags.CY)
-	return 1
 }
 
-func sbbD(c *CPU) uint16 {
+func sbbD(c *CPU) {
 	c.sub(c.reg.D, c.flags.CY)
-	return 1
 }
 
-func sbbE(c *CPU) uint16 {
+func sbbE(c *CPU) {
 	c.sub(c.reg.E, c.flags.CY)
-	return 1
 }
 
-func sbbH(c *CPU) uint16 {
+func sbbH(c *CPU) {
 	c.sub(c.reg.H, c.flags.CY)
-	return 1
 }
 
-func sbbL(c *CPU) uint16 {
+func sbbL(c *CPU) {
 	c.sub(c.reg.L, c.flags.CY)
-	return 1
 }
 
-func sbbA(c *CPU) uint16 {
+func sbbA(c *CPU) {
 	c.sub(c.reg.A, c.flags.CY)
-	return 1
 }
 
-func sbbM(c *CPU) uint16 {
+func sbbM(c *CPU) {
 	c.sub(c.read(c.GetHL()), c.flags.CY)
-	return 1
 }
 
-func sbi(c *CPU) uint16 {
+func sbi(c *CPU) {
 	c.sub(c.getNextByte(), c.flags.CY)
-	return 2
 }
 
-func inrB(c *CPU) uint16 {
+func inrB(c *CPU) {
 	c.reg.B = c.inr(c.reg.B)
-	return 1
 }
 
-func inrC(c *CPU) uint16 {
+func inrC(c *CPU) {
 	c.reg.C = c.inr(c.reg.C)
-	return 1
 }
 
-func inrD(c *CPU) uint16 {
+func inrD(c *CPU) {
 	c.reg.D = c.inr(c.reg.D)
-	return 1
 }
 
-func inrE(c *CPU) uint16 {
+func inrE(c *CPU) {
 	c.reg.E = c.inr(c.reg.E)
-	return 1
 }
 
-func inrH(c *CPU) uint16 {
+func inrH(c *CPU) {
 	c.reg.H = c.inr(c.reg.H)
-	return 1
 }
 
-func inrL(c *CPU) uint16 {
+func inrL(c *CPU) {
 	c.reg.L = c.inr(c.reg.L)
-	return 1
 }
 
-func inrA(c *CPU) uint16 {
+func inrA(c *CPU) {
 	c.reg.A = c.inr(c.reg.A)
-	return 1
 }
 
-func inrM(c *CPU) uint16 {
+func inrM(c *CPU) {
 	c.Write(c.GetHL(), c.inr(c.read(c.GetHL())))
-	return 1
 }
 
-func dcrB(c *CPU) uint16 {
+func dcrB(c *CPU) {
 	c.reg.B = c.dcr(c.reg.B)
-	return 1
 }
 
-func dcrC(c *CPU) uint16 {
+func dcrC(c *CPU) {
 	c.reg.C = c.dcr(c.reg.C)
-	return 1
 }
 
-func dcrD(c *CPU) uint16 {
+func dcrD(c *CPU) {
 	c.reg.D = c.dcr(c.reg.D)
-	return 1
 }
 
-func dcrE(c *CPU) uint16 {
+func dcrE(c *CPU) {
 	c.reg.E = c.dcr(c.reg.E)
-	return 1
 }
 
-func dcrH(c *CPU) uint16 {
+func dcrH(c *CPU) {
 	c.reg.H = c.dcr(c.reg.H)
-	return 1
 }
 
-func dcrL(c *CPU) uint16 {
+func dcrL(c *CPU) {
 	c.reg.L = c.dcr(c.reg.L)
-	return 1
 }
 
-func dcrA(c *CPU) uint16 {
+func dcrA(c *CPU) {
 	c.reg.A = c.dcr(c.reg.A)
-	return 1
 }
 
-func dcrM(c *CPU) uint16 {
+func dcrM(c *CPU) {
 	c.Write(c.GetHL(), c.dcr(c.read(c.GetHL())))
-	return 1
 }
 
-func inxB(c *CPU) uint16 {
+func inxB(c *CPU) {
 	c.setBC(c.GetBC() + 1)
-	return 1
 }
 
-func inxD(c *CPU) uint16 {
+func inxD(c *CPU) {
 	c.setDE(c.GetDE() + 1)
-	return 1
 }
 
-func inxH(c *CPU) uint16 {
+func inxH(c *CPU) {
 	c.setHL(c.GetHL() + 1)
-	return 1
 }
 
-func inxSP(c *CPU) uint16 {
+func inxSP(c *CPU) {
 	c.sp += 1
-	return 1
 }
 
-func dcxB(c *CPU) uint16 {
+func dcxB(c *CPU) {
 	c.setBC(c.GetBC() - 1)
-	return 1
 }
 
-func dcxD(c *CPU) uint16 {
+func dcxD(c *CPU) {
 	c.setDE(c.GetDE() - 1)
-	return 1
 }
 
-func dcxH(c *CPU) uint16 {
+func dcxH(c *CPU) {
 	c.setHL(c.GetHL() - 1)
-	return 1
 }
 
-func dcxSP(c *CPU) uint16 {
+func dcxSP(c *CPU) {
 	c.sp -= 1
-	return 1
 }
 
-func dadB(c *CPU) uint16 {
+func dadB(c *CPU) {
 	c.dad(c.GetBC())
-	return 1
 }
 
-func dadD(c *CPU) uint16 {
+func dadD(c *CPU) {
 	c.dad(c.GetDE())
-	return 1
 }
 
-func dadH(c *CPU) uint16 {
+func dadH(c *CPU) {
 	c.dad(c.GetHL())
-	return 1
 }
 
-func dadSP(c *CPU) uint16 {
+func dadSP(c *CPU) {
 	c.dad(c.sp)
-	return 1
 }
 
-func daa(c *CPU) uint16 {
+func daa(c *CPU) {
 	cy := c.flags.CY
 	lsb := c.reg.A & 0x0f
 	msb := c.reg.A >> 4
@@ -1069,537 +916,447 @@ func daa(c *CPU) uint16 {
 
 	c.add(uint8(correction), 0)
 	c.flags.CY = cy
-	return 1
 }
 
 // Logical Group
 
-func anaB(c *CPU) uint16 {
+func anaB(c *CPU) {
 	c.and(c.reg.B)
-	return 1
 }
 
-func anaC(c *CPU) uint16 {
+func anaC(c *CPU) {
 	c.and(c.reg.C)
-	return 1
 }
 
-func anaD(c *CPU) uint16 {
+func anaD(c *CPU) {
 	c.and(c.reg.D)
-	return 1
 }
 
-func anaE(c *CPU) uint16 {
+func anaE(c *CPU) {
 	c.and(c.reg.E)
-	return 1
 }
 
-func anaH(c *CPU) uint16 {
+func anaH(c *CPU) {
 	c.and(c.reg.H)
-	return 1
 }
 
-func anaL(c *CPU) uint16 {
+func anaL(c *CPU) {
 	c.and(c.reg.L)
-	return 1
 }
 
-func anaA(c *CPU) uint16 {
+func anaA(c *CPU) {
 	c.and(c.reg.A)
-	return 1
 }
 
-func anaM(c *CPU) uint16 {
+func anaM(c *CPU) {
 	c.and(c.read(c.GetHL()))
-	return 1
 }
 
-func ani(c *CPU) uint16 {
+func ani(c *CPU) {
 	c.and(c.getNextByte())
-	return 2
 }
 
-func oraB(c *CPU) uint16 {
+func oraB(c *CPU) {
 	c.or(c.reg.B)
-	return 1
 }
 
-func oraC(c *CPU) uint16 {
+func oraC(c *CPU) {
 	c.or(c.reg.C)
-	return 1
 }
 
-func oraD(c *CPU) uint16 {
+func oraD(c *CPU) {
 	c.or(c.reg.D)
-	return 1
 }
 
-func oraE(c *CPU) uint16 {
+func oraE(c *CPU) {
 	c.or(c.reg.E)
-	return 1
 }
 
-func oraH(c *CPU) uint16 {
+func oraH(c *CPU) {
 	c.or(c.reg.H)
-	return 1
 }
 
-func oraL(c *CPU) uint16 {
+func oraL(c *CPU) {
 	c.or(c.reg.L)
-	return 1
 }
 
-func oraA(c *CPU) uint16 {
+func oraA(c *CPU) {
 	c.or(c.reg.A)
-	return 1
 }
 
-func oraM(c *CPU) uint16 {
+func oraM(c *CPU) {
 	c.or(c.read(c.GetHL()))
-	return 1
 }
 
-func ori(c *CPU) uint16 {
+func ori(c *CPU) {
 	c.or(c.getNextByte())
-	return 2
 }
 
-func xraB(c *CPU) uint16 {
+func xraB(c *CPU) {
 	c.xor(c.reg.B)
-	return 1
 }
 
-func xraC(c *CPU) uint16 {
+func xraC(c *CPU) {
 	c.xor(c.reg.C)
-	return 1
 }
 
-func xraD(c *CPU) uint16 {
+func xraD(c *CPU) {
 	c.xor(c.reg.D)
-	return 1
 }
 
-func xraE(c *CPU) uint16 {
+func xraE(c *CPU) {
 	c.xor(c.reg.E)
-	return 1
 }
 
-func xraH(c *CPU) uint16 {
+func xraH(c *CPU) {
 	c.xor(c.reg.H)
-	return 1
 }
 
-func xraL(c *CPU) uint16 {
+func xraL(c *CPU) {
 	c.xor(c.reg.L)
-	return 1
 }
 
-func xraA(c *CPU) uint16 {
+func xraA(c *CPU) {
 	c.xor(c.reg.A)
-	return 1
 }
 
-func xraM(c *CPU) uint16 {
+func xraM(c *CPU) {
 	c.xor(c.read(c.GetHL()))
-	return 1
 }
 
-func xri(c *CPU) uint16 {
+func xri(c *CPU) {
 	c.xor(c.getNextByte())
-	return 2
 }
 
-func cmpB(c *CPU) uint16 {
+func cmpB(c *CPU) {
 	c.cmp(c.reg.B)
-	return 1
 }
 
-func cmpC(c *CPU) uint16 {
+func cmpC(c *CPU) {
 	c.cmp(c.reg.C)
-	return 1
 }
 
-func cmpD(c *CPU) uint16 {
+func cmpD(c *CPU) {
 	c.cmp(c.reg.D)
-	return 1
 }
 
-func cmpE(c *CPU) uint16 {
+func cmpE(c *CPU) {
 	c.cmp(c.reg.E)
-	return 1
 }
 
-func cmpH(c *CPU) uint16 {
+func cmpH(c *CPU) {
 	c.cmp(c.reg.H)
-	return 1
 }
 
-func cmpL(c *CPU) uint16 {
+func cmpL(c *CPU) {
 	c.cmp(c.reg.L)
-	return 1
 }
 
-func cmpA(c *CPU) uint16 {
+func cmpA(c *CPU) {
 	c.cmp(c.reg.A)
-	return 1
 }
 
-func cmpM(c *CPU) uint16 {
+func cmpM(c *CPU) {
 	c.cmp(c.read(c.GetHL()))
-	return 1
 }
 
-func cpi(c *CPU) uint16 {
+func cpi(c *CPU) {
 	c.cmp(c.getNextByte())
-	return 2
 }
 
-func rlc(c *CPU) uint16 {
+func rlc(c *CPU) {
 	c.flags.CY = c.reg.A >> 7
 	c.reg.A = (c.reg.A << 1) | c.flags.CY
-	return 1
 }
 
-func rrc(c *CPU) uint16 {
+func rrc(c *CPU) {
 	c.flags.CY = c.reg.A & 1
 	c.reg.A = (c.reg.A >> 1) | (c.flags.CY << 7)
-	return 1
 }
 
-func ral(c *CPU) uint16 {
+func ral(c *CPU) {
 	cy := c.flags.CY
 	c.flags.CY = c.reg.A >> 7
 	c.reg.A = (c.reg.A << 1) | cy
-	return 1
 }
 
-func rar(c *CPU) uint16 {
+func rar(c *CPU) {
 	cy := c.flags.CY
 	c.flags.CY = c.reg.A & 1
 	c.reg.A = (c.reg.A >> 1) | (cy << 7)
-	return 1
 }
 
-func cma(c *CPU) uint16 {
+func cma(c *CPU) {
 	c.reg.A ^= 255
-	return 1
 }
 
-func cmc(c *CPU) uint16 {
+func cmc(c *CPU) {
 	c.flags.CY ^= 1
-	return 1
 }
 
-func stc(c *CPU) uint16 {
+func stc(c *CPU) {
 	c.flags.CY = 1
-	return 1
 }
 
 // Branch Group
 
-func jmp(c *CPU) uint16 {
+func jmp(c *CPU) {
 	c.pc = c.getNextTwoBytes()
-	return 0
 }
 
-func jmpCond(c *CPU, cond bool) uint16 {
+func jmpCond(c *CPU, cond bool) {
 	if cond {
-		return jmp(c)
+		jmp(c)
+	} else {
+		c.pc += 2
 	}
-	return 3
 }
 
-func jnz(c *CPU) uint16 {
-	return jmpCond(c, c.flags.Z == 0)
+func jnz(c *CPU) {
+	jmpCond(c, c.flags.Z == 0)
 }
 
-func jz(c *CPU) uint16 {
-	return jmpCond(c, c.flags.Z == 1)
+func jz(c *CPU) {
+	jmpCond(c, c.flags.Z == 1)
 }
 
-func jnc(c *CPU) uint16 {
-	return jmpCond(c, c.flags.CY == 0)
+func jnc(c *CPU) {
+	jmpCond(c, c.flags.CY == 0)
 }
 
-func jc(c *CPU) uint16 {
-	return jmpCond(c, c.flags.CY == 1)
+func jc(c *CPU) {
+	jmpCond(c, c.flags.CY == 1)
 }
 
-func jpo(c *CPU) uint16 {
-	return jmpCond(c, c.flags.P == 0)
+func jpo(c *CPU) {
+	jmpCond(c, c.flags.P == 0)
 }
 
-func jpe(c *CPU) uint16 {
-	return jmpCond(c, c.flags.P == 1)
+func jpe(c *CPU) {
+	jmpCond(c, c.flags.P == 1)
 }
 
-func jp(c *CPU) uint16 {
-	return jmpCond(c, c.flags.S == 0)
+func jp(c *CPU) {
+	jmpCond(c, c.flags.S == 0)
 }
 
-func jm(c *CPU) uint16 {
-	return jmpCond(c, c.flags.S == 1)
+func jm(c *CPU) {
+	jmpCond(c, c.flags.S == 1)
 }
 
-func ret(c *CPU) uint16 {
-	c.pc = (uint16(c.read(c.sp)) | (uint16(c.read(c.sp+1)) << 8))
-	c.sp += 2
-	return 1
+func ret(c *CPU) {
+	c.pc = c.pop()
 }
 
-func retCond(c *CPU, cond bool) uint16 {
+func retCond(c *CPU, cond bool) {
 	if cond {
+		ret(c)
 		c.cyc += 6
-		return ret(c)
 	}
-	return 1
 }
 
-func rnz(c *CPU) uint16 {
-	return retCond(c, c.flags.Z == 0)
+func rnz(c *CPU) {
+	retCond(c, c.flags.Z == 0)
 }
 
-func rz(c *CPU) uint16 {
-	return retCond(c, c.flags.Z == 1)
+func rz(c *CPU) {
+	retCond(c, c.flags.Z == 1)
 }
 
-func rnc(c *CPU) uint16 {
-	return retCond(c, c.flags.CY == 0)
+func rnc(c *CPU) {
+	retCond(c, c.flags.CY == 0)
 }
 
-func rc(c *CPU) uint16 {
-	return retCond(c, c.flags.CY == 1)
+func rc(c *CPU) {
+	retCond(c, c.flags.CY == 1)
 }
 
-func rpo(c *CPU) uint16 {
-	return retCond(c, c.flags.P == 0)
+func rpo(c *CPU) {
+	retCond(c, c.flags.P == 0)
 }
 
-func rpe(c *CPU) uint16 {
-	return retCond(c, c.flags.P == 1)
+func rpe(c *CPU) {
+	retCond(c, c.flags.P == 1)
 }
 
-func rp(c *CPU) uint16 {
-	return retCond(c, c.flags.S == 0)
+func rp(c *CPU) {
+	retCond(c, c.flags.S == 0)
 }
 
-func rm(c *CPU) uint16 {
-	return retCond(c, c.flags.S == 1)
+func rm(c *CPU) {
+	retCond(c, c.flags.S == 1)
 }
 
-func call(c *CPU) uint16 {
-	ret := c.pc + 2
-	c.Write(c.sp-1, uint8(ret>>8)&uint8(0xff))
-	c.Write(c.sp-2, uint8(ret)&uint8(0xff))
-	c.sp = c.sp - 2
-	c.pc = c.getNextTwoBytes()
-	return 0
+func call(c *CPU) {
+	addr := c.getNextTwoBytes()
+	c.push(c.pc)
+	c.pc = addr
 }
 
-func callCond(c *CPU, cond bool) uint16 {
+func callCond(c *CPU, cond bool) {
 	if cond {
+		call(c)
 		c.cyc += 6
-		return call(c)
+	} else {
+		c.pc += 2
 	}
-	return 3
 }
 
-func cnz(c *CPU) uint16 {
-	return callCond(c, c.flags.Z == 0)
+func cnz(c *CPU) {
+	callCond(c, c.flags.Z == 0)
 }
 
-func cz(c *CPU) uint16 {
-	return callCond(c, c.flags.Z == 1)
+func cz(c *CPU) {
+	callCond(c, c.flags.Z == 1)
 }
 
-func cnc(c *CPU) uint16 {
-	return callCond(c, c.flags.CY == 0)
+func cnc(c *CPU) {
+	callCond(c, c.flags.CY == 0)
 }
 
-func cc(c *CPU) uint16 {
-	return callCond(c, c.flags.CY == 1)
+func cc(c *CPU) {
+	callCond(c, c.flags.CY == 1)
 }
 
-func cpo(c *CPU) uint16 {
-	return callCond(c, c.flags.P == 0)
+func cpo(c *CPU) {
+	callCond(c, c.flags.P == 0)
 }
 
-func cpe(c *CPU) uint16 {
-	return callCond(c, c.flags.P == 1)
+func cpe(c *CPU) {
+	callCond(c, c.flags.P == 1)
 }
 
-func cp(c *CPU) uint16 {
-	return callCond(c, c.flags.S == 0)
+func cp(c *CPU) {
+	callCond(c, c.flags.S == 0)
 }
 
-func cm(c *CPU) uint16 {
-	return callCond(c, c.flags.S == 1)
+func cm(c *CPU) {
+	callCond(c, c.flags.S == 1)
 }
 
-func callRst(c *CPU, addr uint16) uint16 {
+func callRst(c *CPU, addr uint16) {
 	call(c)
 	c.pc = addr
-	return 0
 }
 
-func rst0(c *CPU) uint16 {
+func rst0(c *CPU) {
 	callRst(c, 0x00)
-	return 0
 }
 
-func rst1(c *CPU) uint16 {
+func rst1(c *CPU) {
 	callRst(c, 0x08)
-	return 0
 }
 
-func rst2(c *CPU) uint16 {
+func rst2(c *CPU) {
 	callRst(c, 0x10)
-	return 0
 }
 
-func rst3(c *CPU) uint16 {
+func rst3(c *CPU) {
 	callRst(c, 0x18)
-	return 0
 }
 
-func rst4(c *CPU) uint16 {
+func rst4(c *CPU) {
 	callRst(c, 0x20)
-	return 0
 }
 
-func rst5(c *CPU) uint16 {
+func rst5(c *CPU) {
 	callRst(c, 0x28)
-	return 0
 }
 
-func rst6(c *CPU) uint16 {
+func rst6(c *CPU) {
 	callRst(c, 0x30)
-	return 0
 }
 
-func rst7(c *CPU) uint16 {
+func rst7(c *CPU) {
 	callRst(c, 0x38)
-	return 0
 }
 
-func pchl(c *CPU) uint16 {
+func pchl(c *CPU) {
 	c.pc = c.GetHL()
-	return 0
 }
 
 // Stack Group
 
-func pushB(c *CPU) uint16 {
+func pushB(c *CPU) {
 	c.push(c.GetBC())
-	return 1
 }
 
-func pushD(c *CPU) uint16 {
+func pushD(c *CPU) {
 	c.push(c.GetDE())
-	return 1
 }
 
-func pushH(c *CPU) uint16 {
+func pushH(c *CPU) {
 	c.push(c.GetHL())
-	return 1
 }
 
-func pushPSW(c *CPU) uint16 {
-	psw := (c.flags.Z | (c.flags.S << 1) | (c.flags.P << 2) | (c.flags.CY << 3) | (c.flags.AC << 4))
+func pushPSW(c *CPU) {
+	psw := uint8(0)
+	psw |= c.flags.Z << 6
+	psw |= c.flags.S << 7
+	psw |= c.flags.P << 2
+	psw |= c.flags.CY << 0
+	psw |= c.flags.AC << 4
+	psw |= 1 << 1
 	c.push((uint16(c.reg.A) << 8) | uint16(psw))
-	return 1
 }
 
-func popB(c *CPU) uint16 {
+func popB(c *CPU) {
 	c.setBC(c.pop())
-	return 1
 }
 
-func popD(c *CPU) uint16 {
+func popD(c *CPU) {
 	c.setDE(c.pop())
-	return 1
 }
 
-func popH(c *CPU) uint16 {
+func popH(c *CPU) {
 	c.setHL(c.pop())
-	return 1
 }
 
-func popPSW(c *CPU) uint16 {
-	c.reg.A = c.read(c.sp + 1)
-	psw := c.read(c.sp)
-	if (psw & 0x01) == 0x01 {
-		c.flags.Z = 1
-	} else {
-		c.flags.Z = 0
-	}
-	if (psw & 0x02) == 0x02 {
-		c.flags.S = 1
-	} else {
-		c.flags.S = 0
-	}
-	if (psw & 0x04) == 0x04 {
-		c.flags.P = 1
-	} else {
-		c.flags.P = 0
-	}
-	if (psw & 0x08) == 0x05 {
-		c.flags.CY = 1
-	} else {
-		c.flags.CY = 0
-	}
-	if (psw & 0x10) == 0x10 {
-		c.flags.AC = 1
-	} else {
-		c.flags.AC = 0
-	}
-	c.sp += 2
-	return 1
+func popPSW(c *CPU) {
+	af := c.pop()
+	c.reg.A = uint8(af >> 8)
+	psw := uint8(af & 0xff)
+	c.flags.Z = (psw >> 6) & 1
+	c.flags.S = (psw >> 7) & 1
+	c.flags.P = (psw >> 2) & 1
+	c.flags.CY = (psw >> 0) & 1
+	c.flags.AC = (psw >> 4) & 1
 }
 
-func xthl(c *CPU) uint16 {
+func xthl(c *CPU) {
 	sp1 := c.read(c.sp)
 	sp2 := c.read(c.sp + 1)
 	c.Write(c.sp, c.reg.L)
 	c.Write(c.sp+1, c.reg.H)
 	c.reg.H = sp2
 	c.reg.L = sp1
-	return 1
 }
 
-func sphl(c *CPU) uint16 {
+func sphl(c *CPU) {
 	c.sp = c.GetHL()
-	return 1
 }
 
 // IO and Machine Control Group
 
-func in(c *CPU) uint16 {
+func in(c *CPU) {
 	c.portIn(c.getNextByte())
-	return 2
 }
 
-func out(c *CPU) uint16 {
+func out(c *CPU) {
 	c.portOut(c.getNextByte())
-	return 2
 }
 
-func ei(c *CPU) uint16 {
+func ei(c *CPU) {
 	c.flags.I = 1
 	c.intDelay = 1
-	return 1
 }
 
-func di(c *CPU) uint16 {
+func di(c *CPU) {
 	c.flags.I = 0
-	return 1
 }
 
-func hlt(c *CPU) uint16 {
+func hlt(c *CPU) {
 	os.Exit(0)
-	return 1
 }
 
-func noOp(c *CPU) uint16 {
-	return 1
-}
+func noOp(c *CPU) {}
