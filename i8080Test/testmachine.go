@@ -16,7 +16,7 @@ type TestMachine struct {
 
 func NewTestMachine(filename string, showDebug bool) *TestMachine {
 	tm := TestMachine{showDebug: showDebug, running: true}
-	cpu := i8080.NewCPU(0x100, tm.portIn, tm.portOut)
+	cpu := i8080.NewCPU(0x100, 0, 64*1024, tm.portIn, tm.portOut)
 	cpu.LoadRom(filename)
 	cpu.Write(0x0, 0xD3)
 	cpu.Write(0x1, 0x0)

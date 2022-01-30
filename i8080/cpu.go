@@ -26,23 +26,25 @@ var (
 )
 
 type CPU struct {
-	mem             [64 * 1024]uint8
-	reg             *Registers
-	flags           *Flags
-	pc, sp          uint16
-	cyc             int
-	intPending      bool
-	intOpcode       uint8
-	intDelay        uint8
-	portIn, portOut func(uint8)
+	mem                 [64 * 1024]uint8
+	reg                 *Registers
+	flags               *Flags
+	pc, sp              uint16
+	romMax, ramMax      uint32
+	cyc                 int
+	intPending          bool
+	intOpcode, intDelay uint8
+	portIn, portOut     func(uint8)
 }
 
-func NewCPU(pc uint16, portIn func(uint8), portOut func(uint8)) *CPU {
-	return &CPU{reg: &Registers{}, flags: &Flags{}, pc: pc, portIn: portIn, portOut: portOut}
+func NewCPU(pc uint16, romMax uint32, ramMax uint32, portIn func(uint8), portOut func(uint8)) *CPU {
+	return &CPU{reg: &Registers{}, flags: &Flags{},
+		ramMax: ramMax, romMax: romMax,
+		pc: pc, portIn: portIn, portOut: portOut}
 }
 
-func (c *CPU) GetMemory() *[65536]uint8 {
-	return &c.mem
+func (c *CPU) GetMemory() []uint8 {
+	return c.mem[:]
 }
 
 func (c *CPU) GetRegisters() *Registers {
@@ -114,7 +116,9 @@ func (c *CPU) LoadRom(filename string) {
 }
 
 func (c *CPU) Write(addr uint16, val uint8) {
-	c.mem[addr] = val
+	if uint32(addr) >= c.romMax && uint32(addr) < c.ramMax {
+		c.mem[addr] = val
+	}
 }
 
 func (c *CPU) read(addr uint16) uint8 {
