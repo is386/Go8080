@@ -1,10 +1,14 @@
 package main
 
-import "github.com/veandco/go-sdl2/sdl"
+import (
+	"github.com/is386/Go8080/i8080Invaders"
+)
+
+var (
+	DEBUG = true
+)
 
 func main() {
-	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
-		return
-	}
-	sdl.Quit()
+	im := i8080Invaders.NewInvadersMachine(DEBUG)
+	im.Run()
 }
