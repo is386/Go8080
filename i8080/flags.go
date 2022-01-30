@@ -6,4 +6,5 @@ type Flags struct {
 	P  uint8
 	CY uint8
 	AC uint8
+	I  uint8
 }

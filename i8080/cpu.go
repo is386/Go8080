@@ -5,8 +5,6 @@ import (
 	"os"
 )
 
-// TODO: move out debugging stuff
-
 var (
 	CYCLES = [256]int{
 		04, 10, 07, 05, 05, 05, 07, 04, 04, 10, 07, 05, 05, 05, 07, 04,
@@ -33,6 +31,9 @@ type CPU struct {
 	flags           *Flags
 	pc, sp          uint16
 	cyc             int
+	intPending      bool
+	intOpcode       uint8
+	intDelay        uint8
 	portIn, portOut func(uint8)
 }
 
@@ -58,6 +59,10 @@ func (c *CPU) GetSP() uint16 {
 
 func (c *CPU) GetCycles() int {
 	return c.cyc
+}
+
+func (c *CPU) SubtractCycles(cyc int) {
+	c.cyc -= cyc
 }
 
 func (c *CPU) GetAF() uint16 {
@@ -125,10 +130,15 @@ func (c *CPU) getSecondByte() uint8 {
 }
 
 func (c *CPU) getNextTwoBytes() uint16 {
-	return (uint16(c.getSecondByte()) << 8) | uint16(c.mem[c.pc+1])
+	return (uint16(c.getSecondByte()) << 8) | uint16(c.getNextByte())
 }
 
 func (c *CPU) fetch() uint8 {
+	if c.intPending && c.flags.I == 1 && c.intDelay == 0 {
+		c.intPending = false
+		c.flags.I = 0
+		return c.intOpcode
+	}
 	return c.read(c.pc)
 }
 
@@ -139,9 +149,17 @@ func (c *CPU) decode(opcode uint8) func(*CPU) uint16 {
 func (c *CPU) Execute() {
 	opcode := c.fetch()
 	c.cyc += CYCLES[opcode]
+	if c.intDelay > 0 {
+		c.intDelay--
+	}
 	instr := c.decode(opcode)
 	steps := instr(c)
 	c.pc += steps
+}
+
+func (c *CPU) Interrupt(opcode uint8) {
+	c.intPending = true
+	c.intOpcode = opcode
 }
 
 func (c *CPU) setZSP(val uint8) {
@@ -665,7 +683,7 @@ func lxiSP(c *CPU) uint16 {
 }
 
 func lda(c *CPU) uint16 {
-	c.reg.A = c.mem[c.getNextTwoBytes()]
+	c.reg.A = c.read(c.getNextTwoBytes())
 	return 3
 }
 
@@ -1324,7 +1342,7 @@ func jm(c *CPU) uint16 {
 }
 
 func ret(c *CPU) uint16 {
-	c.pc = (uint16(c.mem[c.sp]) | (uint16(c.mem[c.sp+1]) << 8))
+	c.pc = (uint16(c.read(c.sp)) | (uint16(c.read(c.sp+1)) << 8))
 	c.sp += 2
 	return 1
 }
@@ -1371,8 +1389,8 @@ func rm(c *CPU) uint16 {
 
 func call(c *CPU) uint16 {
 	ret := c.pc + 2
-	c.mem[c.sp-1] = uint8(ret>>8) & uint8(0xff)
-	c.mem[c.sp-2] = uint8(ret) & uint8(0xff)
+	c.Write(c.sp-1, uint8(ret>>8)&uint8(0xff))
+	c.Write(c.sp-2, uint8(ret)&uint8(0xff))
 	c.sp = c.sp - 2
 	c.pc = c.getNextTwoBytes()
 	return 0
@@ -1567,10 +1585,13 @@ func out(c *CPU) uint16 {
 }
 
 func ei(c *CPU) uint16 {
+	c.flags.I = 1
+	c.intDelay = 1
 	return 1
 }
 
 func di(c *CPU) uint16 {
+	c.flags.I = 0
 	return 1
 }
 
