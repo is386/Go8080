@@ -36,8 +36,7 @@ func (tm *TestMachine) Run() {
 		tm.instrCount++
 	}
 	tm.cycles = tm.cpu.GetCycles()
-	fmt.Println("\n\n----------------------")
-	fmt.Printf("Test Completed\nInstructions: %d\nCycles: %d\n\n", tm.instrCount, tm.cycles)
+	fmt.Print("\n\n")
 }
 
 func (tm *TestMachine) portIn(port uint8) {
