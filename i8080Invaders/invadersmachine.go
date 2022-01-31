@@ -1,6 +1,8 @@
 package i8080Invaders
 
 import (
+	"os"
+
 	"github.com/is386/Go8080/i8080"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -119,6 +121,8 @@ func (im *InvadersMachine) keyDown(key sdl.Keycode) {
 	case sdl.K_d:
 		im.port1 |= 0x40
 		im.port2 |= 0x40
+	case sdl.K_ESCAPE:
+		os.Exit(0)
 	}
 }
 
@@ -139,5 +143,7 @@ func (im *InvadersMachine) keyUp(key sdl.Keycode) {
 	case sdl.K_d:
 		im.port1 &= 0xBF
 		im.port2 &= 0xBF
+	case sdl.K_ESCAPE:
+		os.Exit(0)
 	}
 }
