@@ -24,10 +24,11 @@ This will run a test emulator that runs test ROMs that were used to exercise the
 
 ## Space Invaders Controls
 
-|   Key    |   Effect    |
-| :------: | :---------: |
-| `SPACE`  | Insert Coin |
-| `RETURN` |    Start    |
-|   `A`    |  Move Left  |
-|   `D`    | Move Right  |
-|   `J`    |    Shoot    |
+|   Key   |       Effect        |
+| :-----: | :-----------------: |
+| `SPACE` |     Insert Coin     |
+|   `1`   | Start 1 Player Game |
+|   `2`   | Start 2 Player Game |
+|   `A`   |      Move Left      |
+|   `D`   |     Move Right      |
+|   `J`   |        Shoot        |
