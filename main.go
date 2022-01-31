@@ -5,10 +5,10 @@ import (
 )
 
 var (
-	DEBUG = true
+	DEBUG = false
 )
 
 func main() {
-	im := i8080Invaders.NewInvadersMachine(DEBUG)
+	im := i8080Invaders.NewInvadersMachine()
 	im.Run()
 }

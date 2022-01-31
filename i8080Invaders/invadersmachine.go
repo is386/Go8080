@@ -1,60 +1,35 @@
 package i8080Invaders
 
 import (
-	"fmt"
-
 	"github.com/is386/Go8080/i8080"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 var (
-	FILENAME         = "i8080Invaders/INVADERS.COM"
-	SPEED            = 1
-	FPS              = 59.541985
-	CLOCK_SPEED      = 1996800
-	CYCLES_PER_FRAME = float64(CLOCK_SPEED) / FPS
-	BUTTONS          = map[sdl.Keycode]uint8{
-		sdl.K_SPACE:  0x1,
-		sdl.K_a:      0x20,
-		sdl.K_d:      0x40,
-		sdl.K_j:      0x10,
-		sdl.K_RETURN: 0x04,
-	}
+	FILE = "i8080Invaders/INVADERS.COM"
+	CPS  = 2000000 / 60
 )
 
 type InvadersMachine struct {
 	cpu                             *i8080.CPU
 	screen                          *Screen
-	nextInt                         uint8
-	port1                           uint8
+	port1, port2                    uint8
 	shiftMsb, shiftLsb, shiftOffset uint8
-	showDebug                       bool
 }
 
-func NewInvadersMachine(showDebug bool) *InvadersMachine {
-	im := &InvadersMachine{nextInt: 0xCF, screen: NewScreen(), showDebug: showDebug}
-	cpu := i8080.NewCPU(0x0, im.PortIn, im.PortOut)
-	cpu.LoadRom(FILENAME)
+func NewInvadersMachine() *InvadersMachine {
+	im := &InvadersMachine{screen: NewScreen()}
+	cpu := i8080.NewCPU(0x0, 0x2000, 0x4000, im.PortIn, im.PortOut)
+	cpu.LoadRom(FILE)
 	im.cpu = cpu
 	return im
 }
 
 func (im *InvadersMachine) Run() {
-	lastTime := uint32(0)
 	running := true
-
 	for running {
-		currentTime := sdl.GetTicks()
-		dt := currentTime - lastTime
-		lastTime = currentTime
-
 		running = im.pollSDL()
-		if im.showDebug {
-			im.printState()
-		}
-
-		im.runCPU(dt * uint32(SPEED))
-		im.screen.Update()
+		im.runCPU()
 	}
 	im.screen.Destroy()
 }
@@ -76,31 +51,22 @@ func (im *InvadersMachine) pollSDL() bool {
 	return true
 }
 
-func (im *InvadersMachine) runCPU(ms uint32) {
-	count := uint32(0)
-	for count < (ms * uint32(CLOCK_SPEED) / 1000) {
-		cyc := im.cpu.GetCycles()
+func (im *InvadersMachine) runCPU() {
+	for im.cpu.GetCycles() < CPS/2 {
 		im.cpu.Execute()
-		elapsed := im.cpu.GetCycles() - cyc
-		count += uint32(elapsed)
-
-		if im.cpu.GetCycles() >= int(CYCLES_PER_FRAME/2) {
-			im.cpu.SubtractCycles(int(CYCLES_PER_FRAME / 2))
-			im.sendInterrupt()
-		}
 	}
-}
-
-func (im *InvadersMachine) sendInterrupt() {
-	im.cpu.Interrupt(im.nextInt)
-	if im.nextInt == 0xD7 {
-		im.screen.Draw(im)
+	if im.cpu.IsInterrupted() {
+		im.cpu.Interrupt(0x8)
 	}
-	if im.nextInt == 0xCF {
-		im.nextInt = 0xD7
-	} else {
-		im.nextInt = 0xCF
+	for im.cpu.GetCycles() < CPS {
+		im.cpu.Execute()
 	}
+	if im.cpu.IsInterrupted() {
+		im.cpu.Interrupt(0x10)
+	}
+	im.cpu.SubtractCycles(int(CPS))
+	im.screen.Draw(im)
+	im.screen.Update()
 }
 
 func (im *InvadersMachine) PortIn(port uint8) {
@@ -110,9 +76,13 @@ func (im *InvadersMachine) PortIn(port uint8) {
 		break
 	case 1:
 		val = im.port1
+	case 2:
+		val = im.port2
 	case 3:
 		shift := (uint16(im.shiftMsb) << 8) | uint16(im.shiftLsb)
 		val = uint8((shift >> (8 - im.shiftOffset)) & 0xFF)
+	case 6:
+		val = 0
 	}
 	reg := im.cpu.GetRegisters()
 	reg.A = val
@@ -127,32 +97,47 @@ func (im *InvadersMachine) PortOut(port uint8) {
 	case 4:
 		im.shiftLsb = im.shiftMsb
 		im.shiftMsb = a
+	case 6:
+		break
 	}
 }
 
 func (im *InvadersMachine) keyDown(key sdl.Keycode) {
-	if val, ok := BUTTONS[key]; ok {
-		im.port1 |= val
+	switch key {
+	case sdl.K_SPACE:
+		im.port1 |= 0x01
+	case sdl.K_1:
+		im.port1 |= 0x04
+	case sdl.K_2:
+		im.port1 |= 0x02
+	case sdl.K_j:
+		im.port1 |= 0x10
+		im.port2 |= 0x10
+	case sdl.K_a:
+		im.port1 |= 0x20
+		im.port2 |= 0x20
+	case sdl.K_d:
+		im.port1 |= 0x40
+		im.port2 |= 0x40
 	}
-
 }
 
 func (im *InvadersMachine) keyUp(key sdl.Keycode) {
-	if val, ok := BUTTONS[key]; ok {
-		im.port1 &= ^val
+	switch key {
+	case sdl.K_SPACE:
+		im.port1 &= 0xFE
+	case sdl.K_1:
+		im.port1 &= 0xFD
+	case sdl.K_2:
+		im.port1 &= 0xFB
+	case sdl.K_j:
+		im.port1 &= 0xEF
+		im.port2 &= 0xEF
+	case sdl.K_a:
+		im.port1 &= 0xDF
+		im.port2 &= 0xDF
+	case sdl.K_d:
+		im.port1 &= 0xBF
+		im.port2 &= 0xBF
 	}
-}
-
-func (tm *InvadersMachine) printState() {
-	mem := tm.cpu.GetMemory()
-	pc := tm.cpu.GetPC()
-	sp := tm.cpu.GetSP()
-	cyc := tm.cpu.GetCycles()
-	af := tm.cpu.GetAF()
-	bc := tm.cpu.GetBC()
-	de := tm.cpu.GetDE()
-	hl := tm.cpu.GetHL()
-
-	fmt.Printf("\nPC: %04X, AF: %04X, BC: %04X, DE: %04X, HL: %04X, SP: %04X, CYC: %04d	(%02X %02X %02X %02X)",
-		pc, af, bc, de, hl, sp, cyc, mem[pc], mem[pc+1], mem[pc+2], mem[pc+3])
 }

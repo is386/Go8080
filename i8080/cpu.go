@@ -26,15 +26,14 @@ var (
 )
 
 type CPU struct {
-	mem                 [64 * 1024]uint8
-	reg                 *Registers
-	flags               *Flags
-	pc, sp              uint16
-	romMax, ramMax      uint32
-	cyc                 int
-	intPending          bool
-	intOpcode, intDelay uint8
-	portIn, portOut     func(uint8)
+	mem             [64 * 1024]uint8
+	reg             *Registers
+	flags           *Flags
+	pc, sp          uint16
+	romMax, ramMax  uint32
+	cyc             int
+	intEnabled      bool
+	portIn, portOut func(uint8)
 }
 
 func NewCPU(pc uint16, romMax uint32, ramMax uint32, portIn func(uint8), portOut func(uint8)) *CPU {
@@ -65,6 +64,10 @@ func (c *CPU) GetCycles() int {
 
 func (c *CPU) SubtractCycles(cyc int) {
 	c.cyc -= cyc
+}
+
+func (c *CPU) IsInterrupted() bool {
+	return c.intEnabled
 }
 
 func (c *CPU) GetAF() uint16 {
@@ -138,11 +141,6 @@ func (c *CPU) getNextTwoBytes() uint16 {
 }
 
 func (c *CPU) fetch() uint8 {
-	if c.intPending && c.flags.I == 1 && c.intDelay == 0 {
-		c.intPending = false
-		c.flags.I = 0
-		return c.intOpcode
-	}
 	return c.getNextByte()
 }
 
@@ -153,16 +151,14 @@ func (c *CPU) decode(opcode uint8) func(*CPU) {
 func (c *CPU) Execute() {
 	opcode := c.fetch()
 	c.cyc += CYCLES[opcode]
-	if c.intDelay > 0 {
-		c.intDelay--
-	}
 	instr := c.decode(opcode)
 	instr(c)
 }
 
-func (c *CPU) Interrupt(opcode uint8) {
-	c.intPending = true
-	c.intOpcode = opcode
+func (c *CPU) Interrupt(vector uint16) {
+	c.push(c.pc)
+	c.intEnabled = false
+	c.pc = vector
 }
 
 func (c *CPU) setZSP(val uint8) {
@@ -1351,12 +1347,11 @@ func out(c *CPU) {
 }
 
 func ei(c *CPU) {
-	c.flags.I = 1
-	c.intDelay = 1
+	c.intEnabled = true
 }
 
 func di(c *CPU) {
-	c.flags.I = 0
+	c.intEnabled = false
 }
 
 func hlt(c *CPU) {

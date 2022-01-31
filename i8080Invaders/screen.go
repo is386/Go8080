@@ -8,7 +8,6 @@ var (
 	WIDTH         = 224
 	HEIGHT        = 256
 	RED    uint32 = 0x0000FF
-	CYAN   uint32 = 0xFFFF00
 	GREEN  uint32 = 0x00FF00
 	WHITE  uint32 = 0xFFFFFF
 	BLACK  uint32 = 0x000000
@@ -62,7 +61,7 @@ func newTexture(ren *sdl.Renderer) *sdl.Texture {
 }
 
 func newSurface() *sdl.Surface {
-	sur, err := sdl.CreateRGBSurface(0, int32(WIDTH), int32(WIDTH), 32, 0, 0, 0, 0)
+	sur, err := sdl.CreateRGBSurface(0, int32(WIDTH), int32(HEIGHT), 32, 0, 0, 0, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -128,6 +127,6 @@ func getColor(curByte uint8, curBit uint8, x int32, y int32) uint32 {
 	} else if x >= 192 && x < 224 {
 		return RED
 	} else {
-		return CYAN
+		return WHITE
 	}
 }
