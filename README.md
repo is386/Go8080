@@ -2,7 +2,7 @@
 
 This is a complete and accurate emulator for the Intel 8080 microprocessor. I used the i8080 emulator to implement an emulator for the Space Invaders arcade cabinet. My implementation does not emulate sound. The i8080 emulator is located in `i8080/`, the Space Invaders emulator is located in `i8080Invaders/`, and a test emulator is included in `i8080Test/`.
 
-![](https://github.com/is386/Go8080/blob/main/demo.gif?raw=true)
+![](https://github.com/is386/Go8080/blob/main/game.gif?raw=true)
 
 ## Usage
 
