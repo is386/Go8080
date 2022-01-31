@@ -7,6 +7,7 @@ import (
 var (
 	WIDTH         = 224
 	HEIGHT        = 256
+	SCALE         = 3
 	RED    uint32 = 0x0000FF
 	GREEN  uint32 = 0x00FF00
 	WHITE  uint32 = 0xFFFFFF
@@ -34,7 +35,7 @@ func NewScreen() *Screen {
 
 func newWindow() *sdl.Window {
 	win, err := sdl.CreateWindow("Space Invaders", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED,
-		int32(WIDTH), int32(HEIGHT), sdl.WINDOW_ALLOW_HIGHDPI)
+		int32(WIDTH*SCALE), int32(HEIGHT*SCALE), sdl.WINDOW_ALLOW_HIGHDPI)
 	if err != nil {
 		panic(err)
 	}
@@ -47,13 +48,13 @@ func newRenderer(win *sdl.Window) *sdl.Renderer {
 	if err != nil {
 		panic(err)
 	}
-	ren.SetLogicalSize(int32(WIDTH), int32(HEIGHT))
+	ren.SetLogicalSize(int32(WIDTH*SCALE), int32(HEIGHT*SCALE))
 	return ren
 }
 
 func newTexture(ren *sdl.Renderer) *sdl.Texture {
 	tex, err := ren.CreateTexture(uint32(sdl.PIXELFORMAT_RGBA32),
-		sdl.TEXTUREACCESS_STREAMING, int32(WIDTH), int32(HEIGHT))
+		sdl.TEXTUREACCESS_STREAMING, int32(WIDTH*SCALE), int32(HEIGHT*SCALE))
 	if err != nil {
 		panic(err)
 	}
@@ -61,7 +62,7 @@ func newTexture(ren *sdl.Renderer) *sdl.Texture {
 }
 
 func newSurface() *sdl.Surface {
-	sur, err := sdl.CreateRGBSurface(0, int32(WIDTH), int32(HEIGHT), 32, 0, 0, 0, 0)
+	sur, err := sdl.CreateRGBSurface(0, int32(WIDTH*SCALE), int32(HEIGHT*SCALE), 32, 0, 0, 0, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -101,7 +102,7 @@ func (s *Screen) Draw(im *InvadersMachine) {
 }
 
 func (s *Screen) drawPixel(x int32, y int32, color uint32) {
-	s.sur.FillRect(&sdl.Rect{X: x, Y: y, W: 1, H: 1}, color)
+	s.sur.FillRect(&sdl.Rect{X: x * int32(SCALE), Y: y * int32(SCALE), W: int32(SCALE), H: int32(SCALE)}, color)
 }
 
 func (s *Screen) updateTexture() {
